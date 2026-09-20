@@ -887,6 +887,30 @@ void describe('BackgroundTaskRegistry', () => {
     }
   });
 
+  void it('emits readable fallback text with unchanged structured completion and wake options', async () => {
+    const h = await createHarness();
+    try {
+      const { task, child } = await startFakeTask(h, 'Readable & useful');
+      child.close(0, null);
+      await waitFor(() => h.notifications.length === 1, 'readable completion');
+      const note = h.notifications[0];
+      assert.ok(note);
+      assert.equal(note.message.customType, 'background-task-notification');
+      assert.equal(note.message.display, true);
+      assert.equal(note.message.content, [
+        `Background task completed: Readable & useful (${task.id})`,
+        'Exit code: 0',
+        `Output: ${task.outputPath}`,
+        'Terminal state and output metadata are durable. Do not call bg_status to reconfirm; use bg_logs only if output is needed.',
+      ].join('\n'));
+      assert.equal(note.message.details.id, task.id);
+      assert.equal(note.message.details.name, 'Readable & useful');
+      assert.equal(note.message.details.status, 'completed');
+      assert.equal(note.message.details.outputPath, task.outputPath);
+      assert.deepEqual(note.options, { deliverAs: 'followUp', triggerTurn: true });
+    } finally { await cleanup(h.root); }
+  });
+
   void it('finalizes and notifies once under error/close and output-cap races', async () => {
     const h = await createHarness({
       maxOutputBytes: 8,
@@ -906,7 +930,7 @@ void describe('BackgroundTaskRegistry', () => {
       assert.ok(notification, 'terminal notification should be captured');
       assert.match(
         notification.message.content,
-        /<guidance>Terminal state and output metadata are durable\. Do not call bg_status to reconfirm; use bg_logs only if output is needed\.<\/guidance>/,
+        /\nTerminal state and output metadata are durable\. Do not call bg_status to reconfirm; use bg_logs only if output is needed\.$/,
       );
       assert.deepEqual(notification.options, { deliverAs: 'followUp', triggerTurn: true });
 

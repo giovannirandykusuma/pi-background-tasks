@@ -26,20 +26,22 @@ Background tasks can finish silently, notify the terminal, or notify and wake th
 - `bg_run` defaults to durable notification plus follow-up turn: `notifyOnCompletion:true` and `triggerOnCompletion:true`.
 - `bg_status` and `bg_logs` are point-in-time inspection tools, not polling primitives.
 - Tool-launched Fusion tasks default to notification plus follow-up wake and are retrieved once with `bg_result`; `/fusion` uses notification-only.
-- A received `<background-task-notification>` is metadata-backed terminal-status truth. The output stream has finished/closed, but ordinary `.output` bytes are not explicitly fsynced. Do not call `bg_status` only to reconfirm status; call `bg_logs` only if output bytes are needed.
+- A received `background-task-notification` custom message is metadata-backed terminal-status truth. The output stream has finished/closed, but ordinary `.output` bytes are not explicitly fsynced. Do not call `bg_status` only to reconfirm status; call `bg_logs` only if output bytes are needed.
 
 ## Notification payload
 
 When enabled and not during shutdown, terminal completion sends a custom message with:
 
-- `<task-id>`
-- `<task-name>`
-- `<status>` (`completed`, `failed`, or `killed`)
-- optional `<exit-code>`
-- optional `<error>`
-- `<output-file>`
-- `<summary>`
-- `<guidance>` that says terminal state and output metadata are durable and not to reconfirm with `bg_status`.
+- A readable first line: `Background task <status>: <name> (<id>)` (`completed`, `failed`, or `killed`).
+- Optional `Exit code: ...` and full `Error: ...` lines.
+- `Output: ...` with the task output path; output is not fetched automatically.
+- Guidance that terminal state and output metadata are durable and not to reconfirm with `bg_status`;
+  Fusion completion retains its artifact path and `bg_result` retrieval instructions.
+
+Content is plain text, not XML, so clients that do not implement Pi's TUI renderer can display it
+readably. `customType: background-task-notification`, `display:true`, the structured snapshot,
+`deliverAs:followUp`, and task-owned `triggerTurn` are unchanged. No synthetic tool call is created.
+The terminal TUI may continue using its existing compact custom renderer.
 
 The structured details contain the task snapshot, including delivery flags and `notified` state.
 

@@ -267,10 +267,9 @@ void describe('scripted provider fusion_reason integration', { concurrency: fals
           (events[1]?.summaries ?? []).join('\n'),
           /toolResult:bg_status|toolResult:bg_logs/,
         );
-        assert.match(
-          (events[2]?.summaries ?? []).join('\n'),
-          /background-task-notification|<task-id>reason-/,
-        );
+        const wakeTranscript = (events[2]?.summaries ?? []).join('\n');
+        assert.match(wakeTranscript, /user:Background task completed: fusion reason \(reason-[0-9a-f]{32}\)\nExit code: 0\nOutput: /);
+        assert.doesNotMatch(wakeTranscript, /<background-task-notification>|<task-id>/);
         assert.match(
           (events[3]?.summaries ?? []).join('\n'),
           /toolResult:bg_result:.*Scripted fused answer/s,
@@ -289,6 +288,11 @@ void describe('scripted provider fusion_reason integration', { concurrency: fals
         assert.ok(isRecord(launchDetails));
         assert.equal(launchDetails['schema_version'], 'pi-background-tasks.fusion-launch.v1');
         assert.equal(Reflect.get(launchResult, 'usage'), undefined);
+        const launchedTask = launchDetails['task'];
+        assert.ok(isRecord(launchedTask));
+        assert.equal(typeof launchedTask['id'], 'string');
+        assert.ok(wakeTranscript.includes(`Background task completed: fusion reason (${String(launchedTask['id'])})`));
+        assert.ok(wakeTranscript.includes(`Call bg_result({taskId:${JSON.stringify(launchedTask['id'])}}) once to retrieve it; do not poll.`));
 
         const retrievedResults = toolResults(h.session, 'bg_result');
         assert.equal(retrievedResults.length, 1);

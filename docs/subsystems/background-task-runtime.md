@@ -58,6 +58,10 @@ A child closing with code `0` becomes `completed` unless killed/timeout/cap stat
 
 During finalization, the runtime flushes wrapped-agent output, ends and waits for the output stream to finish/close, writes terminal metadata through the durable metadata path, updates waiters, initiates terminal EventBus publication, sends the completion notification when enabled and not shutting down, persists notification state, then prunes old finished tasks. Actual EventBus emission may wait behind the run-response publication gate and therefore may occur after the completion notification; it still occurs only after stream close and terminal metadata. The registry calls a historically named `closeAndFsyncOutputStream()` helper, but its current implementation ends and observes the stream rather than issuing `fsync` for ordinary `.output`; durable terminal truth refers to the metadata-backed status, not a stronger crash-durability guarantee for every output byte.
 
+Completion content is a readable plain-text fallback (`Background task <status>: <name> (<id>)`,
+exit/error/output lines and durable retrieval guidance). The custom type, task snapshot, display
+flag and follow-up/wake options remain structured and unchanged. See [Completion delivery](../concepts/completion-delivery.md).
+
 ## Stopping tasks
 
 Only `running` tasks can be stopped. Managed tasks invoke their task-owned cancellation callback and wait for workflow settlement; process tasks use the platform paths below.

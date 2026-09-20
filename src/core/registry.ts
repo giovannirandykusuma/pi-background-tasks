@@ -9,7 +9,6 @@ import { formatSize } from '@earendil-works/pi-coding-agent';
 import {
   boundedRead,
   deriveTaskNameFromCommand,
-  escapeXml,
   formatAgentActivityLine,
   formatDuration,
   isJsonObject,
@@ -2291,9 +2290,8 @@ export class BackgroundTaskRegistry {
   private notifyCompletion(task: BgTask): void {
     if (!task.notifyOnCompletion || task.notified || this.shuttingDown) return;
     task.notified = true;
-    const exit =
-      task.exitCode === undefined ? '' : `\n  <exit-code>${String(task.exitCode)}</exit-code>`;
-    const error = task.error ? `\n  <error>${escapeXml(task.error)}</error>` : '';
+    const exit = task.exitCode === undefined ? '' : `Exit code: ${String(task.exitCode)}`;
+    const error = task.error ? `Error: ${task.error}` : '';
     const taskName = taskDisplayName(task);
     const guidance =
       task.fusion === undefined
@@ -2302,16 +2300,11 @@ export class BackgroundTaskRegistry {
           ? `Fusion result is durably committed at ${task.fusion.artifactDir}. Call bg_result({taskId:${JSON.stringify(task.id)}}) once to retrieve it; do not poll.`
           : `Fusion ended ${task.status}. Inspect the preserved artifacts at ${task.fusion.artifactDir}; do not poll.`;
     const content = [
-      '<background-task-notification>',
-      `  <task-id>${task.id}</task-id>`,
-      `  <task-name>${escapeXml(taskName)}</task-name>`,
-      `  <status>${task.status}</status>`,
+      `Background task ${task.status}: ${taskName} (${task.id})`,
       exit,
       error,
-      `  <output-file>${escapeXml(task.outputPath)}</output-file>`,
-      `  <summary>${escapeXml(`Background task ${JSON.stringify(taskName)} ${task.status}`)}</summary>`,
-      `  <guidance>${escapeXml(guidance)}</guidance>`,
-      '</background-task-notification>',
+      `Output: ${task.outputPath}`,
+      guidance,
     ]
       .filter(Boolean)
       .join('\n');

@@ -48,19 +48,19 @@
       "verdict": "PASS"
     },
     {
-      "authored_body_sha256": "sha256:66b00ffbb82fdbfb860a689b83d8766cb6753156d6d43817f4ccfed581de977e",
+      "authored_body_sha256": "sha256:bc773d30703182a1bc4d8545615a22bb623a0730796570b30c613cb2900870aa",
       "covers_sources": [
         "src/core/common.ts",
         "src/core/registry.ts",
         "src/core/windows-taskkill.ts"
       ],
       "doc_id": "subsystems/background-task-runtime",
-      "notes": "Independent GPT-5.5 panel reviewed runtime statuses, files, shell, limits, telemetry, kill and shutdown behavior; final correction review verified close-without-fsync and response-gated EventBus emission versus notification ordering.",
-      "reviewer": "gpt-5.5-final-background-runtime-review-panel",
+      "notes": "Independent semantic review PASS with limitations recorded in shikumi run20260920-1509/readable-package-r1/verdict.json; failed Fusion guidance omitted, pre-existing finalization causal wording imprecise; installed/fresh-session proof separate.",
+      "reviewer": "Qwen readable-package-r1 12d858c3-1a0a-4f9b-a275-48e2ea8d5596",
       "schema_version": "pi-background-tasks.docs-attestation.v1",
       "source_sha256": {
-        "src/core/common.ts": "sha256:748d5714ba0b7a4b307d9b4f2b068aa5c11451a465bb4085266f193070d6d809",
-        "src/core/registry.ts": "sha256:b78383bad62aa1cf0fb526d917fb77a080fe6ff5ebc47f59567fffb59e18bec0",
+        "src/core/common.ts": "sha256:42e4afc234ca4bfcc4e9017f04178710761aaf636fd63d6352c5229de1e1dbc4",
+        "src/core/registry.ts": "sha256:92fa9f251bc902ca14bc906efe090508876de0d7ecffd0c7550311edf23d7aac",
         "src/core/windows-taskkill.ts": "sha256:d8e21e077720f408a5b181b200924363ad75fd7b3acbafeabb6a2662a9d1fad1"
       },
       "verdict": "PASS"

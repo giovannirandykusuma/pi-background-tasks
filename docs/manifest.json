@@ -49,17 +49,18 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:253948c8b1f4dd339b0c1eeabd6e8addf584fe208a0f71c3a7f094921ff4547f",
+      "authored_body_sha256": "sha256:bc773d30703182a1bc4d8545615a22bb623a0730796570b30c613cb2900870aa",
       "covers_sources": [
         "src/core/common.ts",
         "src/core/registry.ts",
         "src/core/windows-taskkill.ts"
       ],
       "doc_id": "subsystems/background-task-runtime",
+      "notes": "Independent semantic review PASS with limitations recorded in shikumi run20260920-1509/readable-package-r1/verdict.json; failed Fusion guidance omitted, pre-existing finalization causal wording imprecise; installed/fresh-session proof separate.",
       "rel": "docs/subsystems/background-task-runtime.md",
       "required": true,
-      "reviewer": "gpt-5.5-final-background-runtime-review-panel",
-      "state": "stale-authored-prose"
+      "reviewer": "Qwen readable-package-r1 12d858c3-1a0a-4f9b-a275-48e2ea8d5596",
+      "state": "pass"
     },
     {
       "authored_body_sha256": "sha256:40ee5dac92b9e873d6a9f71a59c03ff1ccd44d6717a13d3be18f74b19e68326e",
