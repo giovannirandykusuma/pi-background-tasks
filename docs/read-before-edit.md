@@ -73,6 +73,7 @@ Every production file under `src/**` and `extensions/**` has exactly one primary
 | `src/extension.ts` | [subsystems/host-ui-and-telemetry](./subsystems/host-ui-and-telemetry.md) |
 | `src/fusion-child-extension.ts` | [subsystems/fusion](./subsystems/fusion.md) |
 | `src/fusion-extension.ts` | [subsystems/fusion](./subsystems/fusion.md) |
+| `src/tool-groups.ts` | [subsystems/background-task-runtime](./subsystems/background-task-runtime.md) |
 | `src/ui/background-tasks-manager.ts` | [subsystems/host-ui-and-telemetry](./subsystems/host-ui-and-telemetry.md) |
 | `src/ui/fusion-model-selector.ts` | [subsystems/fusion](./subsystems/fusion.md) |
 
@@ -92,6 +93,7 @@ Every production file under `src/**` and `extensions/**` has exactly one primary
 | `command:logs` | `always` | yes |
 | `command:tasks` | `always` | yes |
 | `tool:bg_delegate` | `feature:delegate` | yes |
+| `tool:bg_enable` | `any(feature:delegate,feature:fusion)` | yes |
 | `tool:bg_kill` | `always` | yes |
 | `tool:bg_logs` | `always` | yes |
 | `tool:bg_result` | `any(feature:delegate,feature:fusion)` | yes |

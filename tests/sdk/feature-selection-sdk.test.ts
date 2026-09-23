@@ -57,7 +57,7 @@ const FUSION_TOOLS = [
   'fusion_validate',
 ] as const;
 const FUSION_COMMANDS = ['fusion', 'fusion-models'] as const;
-const ADVANCED_TOOLS = ['bg_delegate', 'bg_result', 'bg_run_pi_attested', ...FUSION_TOOLS] as const;
+const ADVANCED_TOOLS = ['bg_delegate', 'bg_enable', 'bg_result', 'bg_run_pi_attested', ...FUSION_TOOLS] as const;
 
 interface RegistrationInventory {
   tools: string[];
@@ -100,7 +100,7 @@ function expectedInventory(
   const renderers: string[] = ['background-task-notification'];
   const shortcuts: string[] = ['ctrl+alt+c'];
   if (features.has('delegate')) tools.push('bg_delegate');
-  if (features.has('delegate') || features.has('fusion')) tools.push('bg_result');
+  if (features.has('delegate') || features.has('fusion')) tools.push('bg_result', 'bg_enable');
   if (features.has('attested')) tools.push('bg_run_pi_attested');
   if (features.has('fusion')) {
     tools.push(...FUSION_TOOLS);
@@ -336,18 +336,37 @@ void describe('C1a feature selection and dock configuration', { concurrency: fal
     }
   });
 
+  void it('lazy activation: optional groups inactive at start, lifecycle tools and bg_enable active', async () => {
+    configure(undefined, undefined);
+    const prior = process.env['PI_BG_TOOL_ACTIVATION'];
+    process.env['PI_BG_TOOL_ACTIVATION'] = 'lazy';
+    const { session } = await makeSession();
+    try {
+      const active = session.getActiveToolNames();
+      for (const name of [...PROCESS_TOOLS, 'bg_enable']) assert.ok(active.includes(name), `${name} active`);
+      for (const name of ADVANCED_TOOLS.filter((n) => n !== 'bg_enable')) assert.equal(active.includes(name), false, `${name} inactive until bg_enable`);
+      assert.ok(session.getToolDefinition('fusion_reason'), 'still registered');
+    } finally {
+      if (prior === undefined) Reflect.deleteProperty(process.env, 'PI_BG_TOOL_ACTIVATION');
+      else process.env['PI_BG_TOOL_ACTIVATION'] = prior;
+      await closeSession(session);
+    }
+  });
+
   void it('keeps the default full public registration surface', async () => {
     configure(undefined, undefined);
     const { session } = await makeSession();
     try {
       const all = new Set(['process', 'delegate', 'fusion', 'attested', 'attribution']);
       assert.deepEqual(sessionInventory(session), expectedInventory(all));
-      for (const name of [...PROCESS_TOOLS, ...ADVANCED_TOOLS]) {
+      for (const name of [...PROCESS_TOOLS, ...ADVANCED_TOOLS].filter((n) => n !== 'bg_enable')) {
         assert.ok(
           session.getActiveToolNames().includes(name),
           `${name} should be active by default`,
         );
       }
+      // Default eager mode = upstream's active loadout: the lazy loader is registered but inactive.
+      assert.equal(session.getActiveToolNames().includes('bg_enable'), false, 'bg_enable is inactive in eager mode');
     } finally {
       await closeSession(session);
     }

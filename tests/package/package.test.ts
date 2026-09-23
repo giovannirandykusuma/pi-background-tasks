@@ -824,6 +824,7 @@ void describe('package', () => {
       'bg_status',
       'bg_logs',
       'bg_run_pi_attested',
+      'bg_enable',
     ]) {
       assert.match(
         types,

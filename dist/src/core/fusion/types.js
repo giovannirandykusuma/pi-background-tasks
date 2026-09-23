@@ -88,6 +88,7 @@ export const FUSION_FORBIDDEN_TOOLS = Object.freeze([
     'bg_status',
     'bg_logs',
     'bg_run_pi_attested',
+    'bg_enable',
 ]);
 /**
  * Prompt-expansion stages guarded by deterministic size accounting. `evaluation`

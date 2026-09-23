@@ -8,7 +8,8 @@ import type {
   ThemeColor,
   ToolRenderResultOptions,
 } from '@earendil-works/pi-coding-agent';
-import { formatSize } from '@earendil-works/pi-coding-agent';
+import { buildSessionContext, formatSize } from '@earendil-works/pi-coding-agent';
+import { parseToolActivationMode, registerToolGroups } from './tool-groups.js';
 import { Text, type KeyId } from '@earendil-works/pi-tui';
 import { Type, type Static } from 'typebox';
 import {
@@ -1224,4 +1225,15 @@ export default async function backgroundTasksExtension(pi: ExtensionAPI): Promis
       );
     },
   });
+
+  // Last: every tool is registered, and our session_start runs after the feature modules' own
+  // re-activation handlers, so lazy mode has the final word on the initial loadout.
+  // Only when an optional result-producing group exists: a process-only configuration keeps
+  // upstream's exact inventory (no loader, no extra session_tree handler). Attested alone stays eager.
+  if (config.features.delegate || config.features.fusion) {
+    registerToolGroups(pi, parseToolActivationMode(process.env['PI_BG_TOOL_ACTIVATION']), {
+      branchMessages: (ctx) => buildSessionContext(ctx.sessionManager.getBranch()).messages,
+      hasResultTask: () => registry.allTasks().some((task) => task.delegate !== undefined || task.fusion !== undefined),
+    });
+  }
 }

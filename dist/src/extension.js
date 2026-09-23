@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { formatSize } from '@earendil-works/pi-coding-agent';
+import { buildSessionContext, formatSize } from '@earendil-works/pi-coding-agent';
+import { parseToolActivationMode, registerToolGroups } from './tool-groups.js';
 import { Text } from '@earendil-works/pi-tui';
 import { Type } from 'typebox';
 import { DEFAULT_LOG_BYTES, MAX_LOG_BYTES, deriveCompletionDeliveryGuidance, deriveTaskNameFromCommand, formatSnapshotList, formatUpdateSegment, isNewerVersion, normalizeMaxBytes, normalizeTaskName, parseBgCommandArgs, taskDisplayName, truncateChars, ReloadSurvivalError, rejectSurvivalForTaskKind, } from './core/common.js';
@@ -961,5 +962,15 @@ export default async function backgroundTasksExtension(pi) {
             return new Text(`${theme.fg('warning', '■ killed')} ${theme.fg('accent', taskDisplayName(task))} ${theme.fg('dim', `(${task.id})`)}\n${theme.fg('dim', `Output: ${task.outputPath}`)}`, 0, 0);
         },
     });
+    // Last: every tool is registered, and our session_start runs after the feature modules' own
+    // re-activation handlers, so lazy mode has the final word on the initial loadout.
+    // Only when an optional result-producing group exists: a process-only configuration keeps
+    // upstream's exact inventory (no loader, no extra session_tree handler). Attested alone stays eager.
+    if (config.features.delegate || config.features.fusion) {
+        registerToolGroups(pi, parseToolActivationMode(process.env['PI_BG_TOOL_ACTIVATION']), {
+            branchMessages: (ctx) => buildSessionContext(ctx.sessionManager.getBranch()).messages,
+            hasResultTask: () => registry.allTasks().some((task) => task.delegate !== undefined || task.fusion !== undefined),
+        });
+    }
 }
 //# sourceMappingURL=extension.js.map

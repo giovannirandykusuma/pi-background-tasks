@@ -138,7 +138,10 @@ void describe('docs package integration contract', () => {
         for (const feature of selected) {
           for (const id of byFeature.get(feature) ?? []) expected.add(id);
         }
-        if (selected.has('delegate') || selected.has('fusion')) expected.add('tool:bg_result');
+        if (selected.has('delegate') || selected.has('fusion')) {
+          expected.add('tool:bg_result');
+          expected.add('tool:bg_enable');
+        }
         if (dock !== 'off') expected.add(`shortcut:${dock}`);
 
         const actual = surfaces

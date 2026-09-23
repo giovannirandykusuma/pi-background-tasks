@@ -5,7 +5,7 @@ mode: authored
 review_policy: behavioral
 stability: stable
 covers_surfaces: []
-covers_sources: [src/core/common.ts, src/core/registry.ts, src/core/reload-shell-owner.ts, src/core/shell-policy.ts, src/core/windows-taskkill.ts]
+covers_sources: [src/core/common.ts, src/core/registry.ts, src/core/reload-shell-owner.ts, src/core/shell-policy.ts, src/core/windows-taskkill.ts, src/tool-groups.ts]
 ---
 # Background task runtime
 
@@ -131,3 +131,7 @@ Windows never falls back to root-only `child.kill` for tree termination. The tas
 ## Source ownership/reference
 
 Primary source ownership for this document is `src/core/common.ts`, `src/core/registry.ts`, `src/core/reload-shell-owner.ts`, `src/core/shell-policy.ts`, and `src/core/windows-taskkill.ts`.
+
+## Optional tool groups (`src/tool-groups.ts`)
+
+`PI_BG_TOOL_ACTIVATION=lazy` keeps the Fusion, delegate and attested groups registered but inactive behind [`bg_enable`](../tools/bg_enable.md); `eager` (default) keeps upstream's full active loadout and the loader inactive. The group state machine (`createToolGroupState`) receives only three host operations (list registered, list active, set active), restores groups called on the current branch at `session_start`/`session_tree`, and keeps `bg_result` active whenever a delegate/Fusion result can be owed. Registration is unconditional so availability stays statically derivable by the docs gate.

@@ -28,6 +28,7 @@ Generated navigation for every package-local documentation page. This index inte
 | [concepts/context-projection-and-budgeting](./concepts/context-projection-and-budgeting.md) | authored | behavioral | evolving |
 | [read-before-edit](./read-before-edit.md) | generated | contract | stable |
 | [tools/bg_delegate](./tools/bg_delegate.md) | mixed | contract | stable |
+| [tools/bg_enable](./tools/bg_enable.md) | mixed | contract | evolving |
 | [tools/bg_kill](./tools/bg_kill.md) | mixed | contract | stable |
 | [tools/bg_logs](./tools/bg_logs.md) | mixed | contract | stable |
 | [tools/bg_result](./tools/bg_result.md) | mixed | contract | stable |
@@ -86,7 +87,7 @@ Generated navigation for every package-local documentation page. This index inte
 - **reference**: [reference/runtime-contracts](./reference/runtime-contracts.md), [reference/shortcuts-and-dock](./reference/shortcuts-and-dock.md)
 - **root**: [choose-a-workflow](./choose-a-workflow.md), [getting-started](./getting-started.md), [INDEX](./INDEX.md), [read-before-edit](./read-before-edit.md)
 - **subsystems**: [subsystems/anthropic-attribution](./subsystems/anthropic-attribution.md), [subsystems/attested-pi-runs](./subsystems/attested-pi-runs.md), [subsystems/background-task-runtime](./subsystems/background-task-runtime.md), [subsystems/child-launch-durability-and-safety](./subsystems/child-launch-durability-and-safety.md), [subsystems/delegation](./subsystems/delegation.md), [subsystems/docs-freshness-gate](./subsystems/docs-freshness-gate.md), [subsystems/fusion](./subsystems/fusion.md), [subsystems/host-ui-and-telemetry](./subsystems/host-ui-and-telemetry.md)
-- **tools**: [tools/bg_delegate](./tools/bg_delegate.md), [tools/bg_kill](./tools/bg_kill.md), [tools/bg_logs](./tools/bg_logs.md), [tools/bg_result](./tools/bg_result.md), [tools/bg_run](./tools/bg_run.md), [tools/bg_run_pi_attested](./tools/bg_run_pi_attested.md), [tools/bg_status](./tools/bg_status.md), [tools/fusion_investigate](./tools/fusion_investigate.md), [tools/fusion_reason](./tools/fusion_reason.md), [tools/fusion_research](./tools/fusion_research.md), [tools/fusion_validate](./tools/fusion_validate.md)
+- **tools**: [tools/bg_delegate](./tools/bg_delegate.md), [tools/bg_enable](./tools/bg_enable.md), [tools/bg_kill](./tools/bg_kill.md), [tools/bg_logs](./tools/bg_logs.md), [tools/bg_result](./tools/bg_result.md), [tools/bg_run](./tools/bg_run.md), [tools/bg_run_pi_attested](./tools/bg_run_pi_attested.md), [tools/bg_status](./tools/bg_status.md), [tools/fusion_investigate](./tools/fusion_investigate.md), [tools/fusion_reason](./tools/fusion_reason.md), [tools/fusion_research](./tools/fusion_research.md), [tools/fusion_validate](./tools/fusion_validate.md)
 
 ## Public surface owners
 
@@ -110,6 +111,7 @@ Generated navigation for every package-local documentation page. This index inte
 | `shortcut:ctrl+alt+c` | [reference/shortcuts-and-dock](./reference/shortcuts-and-dock.md) |
 | `shortcut:shift+down` | [reference/shortcuts-and-dock](./reference/shortcuts-and-dock.md) |
 | `tool:bg_delegate` | [tools/bg_delegate](./tools/bg_delegate.md) |
+| `tool:bg_enable` | [tools/bg_enable](./tools/bg_enable.md) |
 | `tool:bg_kill` | [tools/bg_kill](./tools/bg_kill.md) |
 | `tool:bg_logs` | [tools/bg_logs](./tools/bg_logs.md) |
 | `tool:bg_result` | [tools/bg_result](./tools/bg_result.md) |
@@ -129,32 +131,33 @@ Generated navigation for every package-local documentation page. This index inte
 
 | Kind | Name | ID | Availability | Default | Provenance |
 | --- | --- | --- | --- | --- | --- |
-| command | `bg` | `command:bg` | `always` | yes | `src/extension.ts:761` |
-| command | `bg-clear` | `command:bg-clear` | `always` | yes | `src/extension.ts:804` |
-| command | `bg-tasks` | `command:bg-tasks` | `always` | yes | `src/extension.ts:796` |
-| command | `bg-update` | `command:bg-update` | `always` | yes | `src/extension.ts:812` |
+| command | `bg` | `command:bg` | `always` | yes | `src/extension.ts:762` |
+| command | `bg-clear` | `command:bg-clear` | `always` | yes | `src/extension.ts:805` |
+| command | `bg-tasks` | `command:bg-tasks` | `always` | yes | `src/extension.ts:797` |
+| command | `bg-update` | `command:bg-update` | `always` | yes | `src/extension.ts:813` |
 | command | `claude-cache` | `command:claude-cache` | `feature:attribution` | yes | `src/core/anthropic-attribution.ts:3360` |
 | command | `fusion` | `command:fusion` | `feature:fusion` | yes | `src/fusion-extension.ts:1083` |
 | command | `fusion-models` | `command:fusion-models` | `feature:fusion` | yes | `src/fusion-extension.ts:1123` |
-| command | `jobs` | `command:jobs` | `always` | yes | `src/extension.ts:861` |
-| command | `kill` | `command:kill` | `always` | yes | `src/extension.ts:905` |
-| command | `logs` | `command:logs` | `always` | yes | `src/extension.ts:874` |
-| command | `tasks` | `command:tasks` | `always` | yes | `src/extension.ts:788` |
+| command | `jobs` | `command:jobs` | `always` | yes | `src/extension.ts:862` |
+| command | `kill` | `command:kill` | `always` | yes | `src/extension.ts:906` |
+| command | `logs` | `command:logs` | `always` | yes | `src/extension.ts:875` |
+| command | `tasks` | `command:tasks` | `always` | yes | `src/extension.ts:789` |
 | tool | `bg_delegate` | `tool:bg_delegate` | `feature:delegate` | yes | `src/delegate-extension.ts:500` |
-| tool | `bg_kill` | `tool:bg_kill` | `always` | yes | `src/extension.ts:1192` |
-| tool | `bg_logs` | `tool:bg_logs` | `always` | yes | `src/extension.ts:1147` |
+| tool | `bg_enable` | `tool:bg_enable` | `any(feature:delegate,feature:fusion)` | yes | `src/tool-groups.ts:146` |
+| tool | `bg_kill` | `tool:bg_kill` | `always` | yes | `src/extension.ts:1193` |
+| tool | `bg_logs` | `tool:bg_logs` | `always` | yes | `src/extension.ts:1148` |
 | tool | `bg_result` | `tool:bg_result` | `any(feature:delegate,feature:fusion)` | yes | `src/delegate-extension.ts:757` |
-| tool | `bg_run` | `tool:bg_run` | `always` | yes | `src/extension.ts:938` |
-| tool | `bg_run_pi_attested` | `tool:bg_run_pi_attested` | `feature:attested` | yes | `src/extension.ts:1047` |
-| tool | `bg_status` | `tool:bg_status` | `always` | yes | `src/extension.ts:1116` |
+| tool | `bg_run` | `tool:bg_run` | `always` | yes | `src/extension.ts:939` |
+| tool | `bg_run_pi_attested` | `tool:bg_run_pi_attested` | `feature:attested` | yes | `src/extension.ts:1048` |
+| tool | `bg_status` | `tool:bg_status` | `always` | yes | `src/extension.ts:1117` |
 | tool | `fusion_investigate` | `tool:fusion_investigate` | `feature:fusion` | yes | `src/fusion-extension.ts:1305` |
 | tool | `fusion_reason` | `tool:fusion_reason` | `feature:fusion` | yes | `src/fusion-extension.ts:1287` |
 | tool | `fusion_research` | `tool:fusion_research` | `feature:fusion` | yes | `src/fusion-extension.ts:1324` |
 | tool | `fusion_validate` | `tool:fusion_validate` | `feature:fusion` | yes | `src/fusion-extension.ts:1344` |
-| shortcut | `ctrl+alt+b` | `shortcut:ctrl+alt+b` | `dock:ctrl+alt+b` | no | `src/extension.ts:845` |
-| shortcut | `ctrl+alt+c` | `shortcut:ctrl+alt+c` | `always` | yes | `src/extension.ts:853` |
-| shortcut | `shift+down` | `shortcut:shift+down` | `dock:shift+down` | yes | `src/extension.ts:836` |
-| renderer | `background-task-notification` | `renderer:background-task-notification` | `always` | yes | `src/extension.ts:631` |
+| shortcut | `ctrl+alt+b` | `shortcut:ctrl+alt+b` | `dock:ctrl+alt+b` | no | `src/extension.ts:846` |
+| shortcut | `ctrl+alt+c` | `shortcut:ctrl+alt+c` | `always` | yes | `src/extension.ts:854` |
+| shortcut | `shift+down` | `shortcut:shift+down` | `dock:shift+down` | yes | `src/extension.ts:837` |
+| renderer | `background-task-notification` | `renderer:background-task-notification` | `always` | yes | `src/extension.ts:632` |
 | renderer | `fusion-result` | `renderer:fusion-result` | `feature:fusion` | yes | `src/fusion-extension.ts:1067` |
 | eventbus | `background-task-v1` | `eventbus:background-task-v1` | `always` | yes | `src/core/extension-api.ts` |
 | workflow | `investigate` | `workflow:investigate` | `feature:fusion` | yes | `src/core/fusion/workflows.ts:80` |

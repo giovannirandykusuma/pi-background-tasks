@@ -50,13 +50,14 @@
       "state": "stale-authored-prose"
     },
     {
-      "authored_body_sha256": "sha256:2d05c5c7b510ef46489113efc08158e2dee1eb3c5883456c4ddf23fdc57f87c2",
+      "authored_body_sha256": "sha256:00d6529f3ead94c8b49a88ce5c56c09bcce2bef7bdd07ca4e147895fea796954",
       "covers_sources": [
         "src/core/common.ts",
         "src/core/registry.ts",
         "src/core/reload-shell-owner.ts",
         "src/core/shell-policy.ts",
-        "src/core/windows-taskkill.ts"
+        "src/core/windows-taskkill.ts",
+        "src/tool-groups.ts"
       ],
       "doc_id": "subsystems/background-task-runtime",
       "rel": "docs/subsystems/background-task-runtime.md",
@@ -191,6 +192,7 @@
     "shortcut:ctrl+alt+c",
     "shortcut:shift+down",
     "tool:bg_delegate",
+    "tool:bg_enable",
     "tool:bg_kill",
     "tool:bg_logs",
     "tool:bg_result",
@@ -482,7 +484,8 @@
         "src/core/registry.ts",
         "src/core/reload-shell-owner.ts",
         "src/core/shell-policy.ts",
-        "src/core/windows-taskkill.ts"
+        "src/core/windows-taskkill.ts",
+        "src/tool-groups.ts"
       ],
       "covers_surfaces": [],
       "mode": "authored",
@@ -600,6 +603,17 @@
       "rel": "docs/tools/bg_delegate.md",
       "review_policy": "contract",
       "stability": "stable"
+    },
+    "tools/bg_enable": {
+      "audience": "agent",
+      "covers_sources": [],
+      "covers_surfaces": [
+        "tool:bg_enable"
+      ],
+      "mode": "mixed",
+      "rel": "docs/tools/bg_enable.md",
+      "review_policy": "contract",
+      "stability": "evolving"
     },
     "tools/bg_kill": {
       "audience": "agent",
@@ -822,6 +836,12 @@
       "rel": "docs/tools/bg_delegate.md"
     },
     {
+      "doc_id": "tools/bg_enable",
+      "generator": "scripts/docs/generate.mjs",
+      "name": "tool-contract-bg_enable",
+      "rel": "docs/tools/bg_enable.md"
+    },
+    {
       "doc_id": "tools/bg_kill",
       "generator": "scripts/docs/generate.mjs",
       "name": "tool-contract-bg_kill",
@@ -930,6 +950,7 @@
     "shortcut:ctrl+alt+c",
     "shortcut:shift+down",
     "tool:bg_delegate",
+    "tool:bg_enable",
     "tool:bg_kill",
     "tool:bg_logs",
     "tool:bg_result",
@@ -954,7 +975,7 @@
         "id": "command:bg",
         "kind": "command",
         "name": "bg",
-        "source": "src/extension.ts:761"
+        "source": "src/extension.ts:762"
       },
       {
         "availability": "always",
@@ -963,7 +984,7 @@
         "id": "command:bg-clear",
         "kind": "command",
         "name": "bg-clear",
-        "source": "src/extension.ts:804"
+        "source": "src/extension.ts:805"
       },
       {
         "availability": "always",
@@ -972,7 +993,7 @@
         "id": "command:bg-tasks",
         "kind": "command",
         "name": "bg-tasks",
-        "source": "src/extension.ts:796"
+        "source": "src/extension.ts:797"
       },
       {
         "availability": "always",
@@ -981,7 +1002,7 @@
         "id": "command:bg-update",
         "kind": "command",
         "name": "bg-update",
-        "source": "src/extension.ts:812"
+        "source": "src/extension.ts:813"
       },
       {
         "availability": "feature:attribution",
@@ -1017,7 +1038,7 @@
         "id": "command:jobs",
         "kind": "command",
         "name": "jobs",
-        "source": "src/extension.ts:861"
+        "source": "src/extension.ts:862"
       },
       {
         "availability": "always",
@@ -1026,7 +1047,7 @@
         "id": "command:kill",
         "kind": "command",
         "name": "kill",
-        "source": "src/extension.ts:905"
+        "source": "src/extension.ts:906"
       },
       {
         "availability": "always",
@@ -1035,7 +1056,7 @@
         "id": "command:logs",
         "kind": "command",
         "name": "logs",
-        "source": "src/extension.ts:874"
+        "source": "src/extension.ts:875"
       },
       {
         "availability": "always",
@@ -1044,7 +1065,7 @@
         "id": "command:tasks",
         "kind": "command",
         "name": "tasks",
-        "source": "src/extension.ts:788"
+        "source": "src/extension.ts:789"
       }
     ],
     "eventbus": [
@@ -1076,7 +1097,7 @@
         "id": "renderer:background-task-notification",
         "kind": "renderer",
         "name": "background-task-notification",
-        "source": "src/extension.ts:631"
+        "source": "src/extension.ts:632"
       },
       {
         "availability": "feature:fusion",
@@ -1095,7 +1116,7 @@
         "id": "shortcut:ctrl+alt+b",
         "kind": "shortcut",
         "name": "ctrl+alt+b",
-        "source": "src/extension.ts:845"
+        "source": "src/extension.ts:846"
       },
       {
         "availability": "always",
@@ -1104,7 +1125,7 @@
         "id": "shortcut:ctrl+alt+c",
         "kind": "shortcut",
         "name": "ctrl+alt+c",
-        "source": "src/extension.ts:853"
+        "source": "src/extension.ts:854"
       },
       {
         "availability": "dock:shift+down",
@@ -1113,7 +1134,7 @@
         "id": "shortcut:shift+down",
         "kind": "shortcut",
         "name": "shift+down",
-        "source": "src/extension.ts:836"
+        "source": "src/extension.ts:837"
       }
     ],
     "tool": [
@@ -1207,6 +1228,36 @@
         "source": "src/delegate-extension.ts:500"
       },
       {
+        "availability": "any(feature:delegate,feature:fusion)",
+        "default_available": true,
+        "description": "Activate an optional pi-background-tasks tool group for the next model request: fusion (fusion_reason, fusion_investigate, fusion_research, fusion_validate), delegate (bg_delegate), attested (bg_run_pi_attested). Does not start any task. Offered only when PI_BG_TOOL_ACTIVATION=lazy.",
+        "id": "tool:bg_enable",
+        "kind": "tool",
+        "label": "Enable background tools",
+        "name": "bg_enable",
+        "promptGuidelines": [],
+        "promptSnippet": "activate an optional background tool group (fusion, delegate, attested)",
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "group": {
+              "description": "optional tool group to activate",
+              "enum": [
+                "fusion",
+                "delegate",
+                "attested"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "group"
+          ],
+          "type": "object"
+        },
+        "source": "src/tool-groups.ts:146"
+      },
+      {
         "availability": "always",
         "default_available": true,
         "description": "Stop a running background task by ID. Fails loudly if the task is unknown or already finished.",
@@ -1230,7 +1281,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:1192"
+        "source": "src/extension.ts:1193"
       },
       {
         "availability": "always",
@@ -1266,7 +1317,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:1147"
+        "source": "src/extension.ts:1148"
       },
       {
         "availability": "any(feature:delegate,feature:fusion)",
@@ -1361,7 +1412,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:938"
+        "source": "src/extension.ts:939"
       },
       {
         "availability": "feature:attested",
@@ -1424,7 +1475,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:1047"
+        "source": "src/extension.ts:1048"
       },
       {
         "availability": "always",
@@ -1450,7 +1501,7 @@
           "required": [],
           "type": "object"
         },
-        "source": "src/extension.ts:1116"
+        "source": "src/extension.ts:1117"
       },
       {
         "availability": "feature:fusion",
@@ -1990,6 +2041,9 @@
     "src/fusion-extension.ts": [
       "subsystems/fusion"
     ],
+    "src/tool-groups.ts": [
+      "subsystems/background-task-runtime"
+    ],
     "src/ui/background-tasks-manager.ts": [
       "subsystems/host-ui-and-telemetry"
     ],
@@ -2051,6 +2105,9 @@
     ],
     "tool:bg_delegate": [
       "tools/bg_delegate"
+    ],
+    "tool:bg_enable": [
+      "tools/bg_enable"
     ],
     "tool:bg_kill": [
       "tools/bg_kill"
