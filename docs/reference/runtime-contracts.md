@@ -72,11 +72,11 @@ This generated registry lists production environment-variable references, runtim
 | `PI_BG_DELEGATE_SEED_PATH` | read, write | `src/core/delegate/launch.ts:354`<br>`src/delegate-child-extension.ts:385` |
 | `PI_BG_DELEGATE_SEED_SHA256` | read, write | `src/core/delegate/launch.ts:355`<br>`src/delegate-child-extension.ts:386` |
 | `PI_BG_DELEGATE_TASK_ID` | read, write | `src/core/delegate/launch.ts:356`<br>`src/delegate-child-extension.ts:387` |
-| `PI_BG_DISABLE_PI_TELEMETRY` | read | `src/core/registry.ts:271` |
+| `PI_BG_DISABLE_PI_TELEMETRY` | read | `src/core/registry.ts:294` |
 | `PI_BG_DISABLE_UPDATE_CHECK` | read | `src/extension.ts:656` |
 | `PI_BG_DOCK_SHORTCUT` | read | `src/core/config.ts:113` |
 | `PI_BG_FEATURES` | read | `src/core/config.ts:112` |
-| `PI_BG_MAX_OUTPUT_BYTES` | read | `src/core/registry.ts:78` |
+| `PI_BG_MAX_OUTPUT_BYTES` | read | `src/core/registry.ts:77` |
 | `PI_BG_POSIX_SHELL` | read | `src/core/common.ts:1085` |
 | `PI_BG_POSIX_SHELL_PATH` | read | `src/core/common.ts:1095` |
 | `PI_BG_REGISTRY_URL` | read | `src/extension.ts:665` |
@@ -116,7 +116,7 @@ This generated registry lists production environment-variable references, runtim
 | delegate-artifact | `spill/<receipt-named-file>` | `src/core/delegate/artifacts.ts:54` |
 | directory | `.pi/delegate/<session-id>-<pid>/<task-id>/` | `src/core/delegate/artifacts.ts:161` |
 | directory | `.pi/fusion/<session-id>-<pid>/<run-id>/` | `src/core/fusion/artifacts.ts:568` |
-| directory | `.pi/tasks/<session-id>-<pid>/` | `src/core/registry.ts:1266` |
+| directory | `.pi/tasks/<session-id>-<pid>/` | `src/core/registry.ts:1289` |
 | fusion-artifact | `<attempt-prefix> = candidate-<slot>.attempt-<n> \| evaluation.attempt-<n> \| merge.attempt-<n>` | `src/core/fusion/artifacts.ts:248` |
 | fusion-artifact | `<attempt-prefix>.calibration-violation.json` | `src/core/fusion/artifacts.ts:263` |
 | fusion-artifact | `<attempt-prefix>.events.jsonl` | `src/core/fusion/artifacts.ts:805` |
@@ -137,8 +137,8 @@ This generated registry lists production environment-variable references, runtim
 | fusion-artifact | `result.json` | `src/core/fusion/artifacts.ts:652` |
 | fusion-artifact | `source-policy.private.json` | `src/core/fusion/artifacts.ts:695` |
 | task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.attestation.json` | `src/core/attested-pi-run.ts:979` |
-| task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.json` | `src/core/registry.ts:1456` |
-| task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.output` | `src/core/registry.ts:1455` |
+| task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.json` | `src/core/registry.ts:1479` |
+| task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.output` | `src/core/registry.ts:1478` |
 | task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.pi-events.jsonl` | `src/core/attested-pi-run.ts:976` |
 | task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.pi-telemetry-wrapper.cjs` | `src/core/attested-pi-run.ts:978` |
 | task-file | `.pi/tasks/<session-id>-<pid>/<task-id>.stderr` | `src/core/attested-pi-run.ts:977` |

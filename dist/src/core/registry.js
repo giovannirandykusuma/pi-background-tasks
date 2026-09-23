@@ -4,7 +4,7 @@ import { createWriteStream, existsSync } from 'node:fs';
 import { mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { formatSize } from '@earendil-works/pi-coding-agent';
-import { boundedRead, deriveTaskNameFromCommand, escapeXml, formatAgentActivityLine, formatDuration, isJsonObject, normalizeTaskName, parseAgentActivity, parseJsonText, rejectSurvivalForTaskKind, resolveShellPolicy, sanitizePathSegment, shellInvocationForPolicy, shellPolicySnapshot, shellQuote, snapshot, taskDisplayName, ReloadSurvivalError, } from './common.js';
+import { boundedRead, deriveTaskNameFromCommand, formatAgentActivityLine, formatDuration, isJsonObject, normalizeTaskName, parseAgentActivity, parseJsonText, rejectSurvivalForTaskKind, resolveShellPolicy, sanitizePathSegment, shellInvocationForPolicy, shellPolicySnapshot, shellQuote, snapshot, taskDisplayName, ReloadSurvivalError, } from './common.js';
 import { ATTESTED_GIT_KILL_GRACE_MS, ATTESTED_GIT_MAX_OUTPUT_BYTES, ATTESTED_TASK_ID_PATTERN, } from './attested-pi-contract.js';
 import { closeAndFsyncOutputStream, writeFileFsynced, writeJsonAtomic } from './task-durable.js';
 import { assertWindowsCommandLineWithinLimit, piLaunchArgv, resolvePiLaunch, } from './pi-launch.js';
@@ -20,6 +20,28 @@ export const TERMINAL_PUBLICATION_MAX_ATTEMPTS = 3;
 export const TERMINAL_PUBLICATION_RETRY_MS = 100;
 export const TASK_ADMISSION_TIMEOUT_MS = 30_000;
 const TERMINAL_PUBLICATION_DIAGNOSTIC_CHARS = 500;
+const TASK_NOTIFICATION_GUIDANCE = 'Terminal state and output metadata are durable. Do not call bg_status to reconfirm; use bg_logs only if output is needed.';
+function fusionGuidance(task) {
+    if (task.fusion === undefined)
+        return undefined;
+    return task.status === 'completed'
+        ? `Fusion result is durably committed at ${task.fusion.artifactDir}. Call bg_result({taskId:${JSON.stringify(task.id)}}) once to retrieve it; do not poll.`
+        : `Fusion ended ${task.status}. Inspect the preserved artifacts at ${task.fusion.artifactDir}; do not poll.`;
+}
+/** Plain-text completion content, readable by clients without a custom message renderer. */
+function singleTaskNotificationContent(task) {
+    const exit = task.exitCode === undefined ? '' : `Exit code: ${String(task.exitCode)}`;
+    const error = task.error ? `Error: ${task.error}` : '';
+    return [
+        `Background task ${task.status}: ${taskDisplayName(task)} (${task.id})`,
+        exit,
+        error,
+        `Output: ${task.outputPath}`,
+        fusionGuidance(task) ?? TASK_NOTIFICATION_GUIDANCE,
+    ]
+        .filter(Boolean)
+        .join('\n');
+}
 const TELEMETRY_BUFFER_CHARS = 512 * 1024;
 export class BackgroundTaskAdmissionClosedError extends Error {
     code = 'pi_background_tasks_admission_closed';
@@ -3188,28 +3210,7 @@ export class BackgroundTaskRegistry {
         if (!task.notifyOnCompletion || task.notified || this.shuttingDown)
             return;
         task.notified = true;
-        const exit = task.exitCode === undefined ? '' : `\n  <exit-code>${String(task.exitCode)}</exit-code>`;
-        const error = task.error ? `\n  <error>${escapeXml(task.error)}</error>` : '';
-        const taskName = taskDisplayName(task);
-        const guidance = task.fusion === undefined
-            ? 'Terminal state and output metadata are durable. Do not call bg_status to reconfirm; use bg_logs only if output is needed.'
-            : task.status === 'completed'
-                ? `Fusion result is durably committed at ${task.fusion.artifactDir}. Call bg_result({taskId:${JSON.stringify(task.id)}}) once to retrieve it; do not poll.`
-                : `Fusion ended ${task.status}. Inspect the preserved artifacts at ${task.fusion.artifactDir}; do not poll.`;
-        const content = [
-            '<background-task-notification>',
-            `  <task-id>${task.id}</task-id>`,
-            `  <task-name>${escapeXml(taskName)}</task-name>`,
-            `  <status>${task.status}</status>`,
-            exit,
-            error,
-            `  <output-file>${escapeXml(task.outputPath)}</output-file>`,
-            `  <summary>${escapeXml(`Background task ${JSON.stringify(taskName)} ${task.status}`)}</summary>`,
-            `  <guidance>${escapeXml(guidance)}</guidance>`,
-            '</background-task-notification>',
-        ]
-            .filter(Boolean)
-            .join('\n');
+        const content = singleTaskNotificationContent(task);
         try {
             this.sendCompletionNotification({
                 customType: 'background-task-notification',

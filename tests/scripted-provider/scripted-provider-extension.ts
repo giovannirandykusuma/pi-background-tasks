@@ -172,7 +172,7 @@ function responseFor(
     if (callCount === 3) {
       const transcript = context.messages.map(messageText).join('\n');
       const match =
-        /<task-id>((?:reason|investigate|research|validate)-[0-9a-f]{32})<\/task-id>/u.exec(
+        /^Background task (?:completed|failed|killed): .+ \(((?:reason|investigate|research|validate)-[0-9a-f]{32})\)$/mu.exec(
           transcript,
         );
       if (match?.[1] === undefined) {
