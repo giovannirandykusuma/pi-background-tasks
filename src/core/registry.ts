@@ -4016,6 +4016,8 @@ export class BackgroundTaskRegistry {
     this.notifyFlushTimer = setTimeout(() => {
       void this.flushPendingNotifications();
     }, delay);
+    // Like the registry's other timers: a pending batch must not keep the process alive.
+    this.notifyFlushTimer.unref();
   }
 
   /** Send every buffered completion as one message. Resolves after failure bookkeeping. */

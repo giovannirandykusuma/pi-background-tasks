@@ -802,6 +802,60 @@ void describe('BackgroundTaskRegistry', () => {
     }
   });
 
+  void it('delivers a reload survivor notification immediately, bypassing the batch window', async () => {
+    const hub = createReloadShellOwnerHubForTests({ handoffTimeoutMs: 1000 });
+    const h = await createHarness({ reloadShellOwner: hub, notifyBatchMs: 60_000 });
+    const identity = makeReloadShellIdentity(h.ctx.sessionId ?? '', realpathSync(h.cwd));
+    const firstClaim = hub.beginActivation(identity, 'startup', 'c'.repeat(32));
+    const firstAdapter = await h.registry.stageReloadActivation(firstClaim);
+    const firstLease = hub.commitActivation(firstClaim, firstAdapter);
+    let freshLease: ReloadShellActivationLeaseV1 | undefined;
+    let fresh: BackgroundTaskRegistry | undefined;
+    try {
+      const task = await h.registry.startTask(h.ctx, 'node survivor.js', {
+        name: 'Survivor notify',
+        isAgent: false,
+        surviveReload: true,
+        notifyOnCompletion: true,
+        triggerOnCompletion: true,
+      });
+      const child = lastSpawn(h).child;
+      h.registry.prepareReloadHandoff(firstLease);
+      h.registry.setShuttingDown(true);
+
+      const freshNotifications: CompletionNotificationMessage[] = [];
+      fresh = new BackgroundTaskRegistry({
+        reloadShellOwner: hub,
+        notifyBatchMs: 60_000,
+        sendCompletionNotification: (message) => freshNotifications.push(message),
+        spawn: () => {
+          throw new Error('fresh registry must not respawn a survivor');
+        },
+      });
+      const claim = hub.beginActivation(identity, 'reload', 'd'.repeat(32));
+      const adapter = await fresh.stageReloadActivation(claim);
+      freshLease = hub.commitActivation(claim, adapter);
+      child.close(0, null);
+      await waitFor(() => freshNotifications.length === 1, 'survivor notification', 2000);
+      assert.equal(h.notifications.length, 0, 'the handed-off activation must not notify');
+      assert.equal(freshNotifications[0]?.details.id, task.id);
+      assert.equal(freshNotifications[0]?.details.tasks, undefined);
+      assert.match(
+        freshNotifications[0]?.content ?? '',
+        new RegExp(`^Background task completed: Survivor notify \\(${task.id}\\)`),
+      );
+      await waitFor(() => task.notified, 'survivor notified');
+      await waitFor(() => task.reloadExecution === undefined, 'survivor release');
+    } finally {
+      if (fresh !== undefined && freshLease !== undefined) {
+        fresh.releaseReloadActivation(freshLease);
+        fresh.setShuttingDown(true);
+      }
+      h.registry.setShuttingDown(true);
+      await cleanup(h.root);
+    }
+  });
+
   void it('leaves a reentrant reload throw pending for cumulative fresh attempt two', async () => {
     const hub = createReloadShellOwnerHubForTests({ handoffTimeoutMs: 1000 });
     let oldLease: ReloadShellActivationLeaseV1 | undefined;
@@ -2821,6 +2875,30 @@ setInterval(() => {}, 1000);
       b.child.close(0, null);
       await waitFor(() => h.notifications.length === 2, 'two immediate notifications');
       for (const note of h.notifications) assert.equal(note.message.details.tasks, undefined);
+    } finally {
+      await cleanup(h.root);
+    }
+  });
+
+  void it('does not keep the process alive for a pending batch', async () => {
+    const h = await createHarness({ notifyBatchMs: 5_000 });
+    try {
+      const a = await startFakeTask(h, 'Unref A');
+      a.child.close(0, null);
+      await waitFor(() => a.task.notified, 'buffered completion');
+      const timer: unknown = Reflect.get(h.registry, 'notifyFlushTimer');
+      assert.ok(timer !== undefined, 'a batch timer must be pending');
+      assert.equal((timer as NodeJS.Timeout).hasRef(), false);
+      assert.equal(h.notifications.length, 0);
+      await h.registry.flushPendingNotifications();
+      assert.equal(h.notifications.length, 1);
+      const note = h.notifications[0];
+      assert.ok(note);
+      assert.equal(note.message.details.tasks, undefined);
+      assert.match(
+        note.message.content,
+        new RegExp(`^Background task completed: Unref A \\(${a.task.id}\\)\nExit code: 0\nOutput: `),
+      );
     } finally {
       await cleanup(h.root);
     }
