@@ -83,7 +83,7 @@ This generated registry lists production environment-variable references, runtim
 | `PI_BG_REGISTRY_URL` | read | `src/extension.ts:677` |
 | `PI_BG_SHELL` | read | `src/core/common.ts:1042` |
 | `PI_BG_SHELL_PATH` | read | `src/core/common.ts:1043` |
-| `PI_BG_TOOL_ACTIVATION` | read | `src/extension.ts:1234` |
+| `PI_BG_TOOL_ACTIVATION` | read | `src/extension.ts:1228` |
 | `PI_CACHE_RETENTION` | read, write | `src/core/anthropic-attribution.ts:791`<br>`src/core/anthropic-attribution.ts:802`<br>`src/core/fusion/claude-cache.ts:57`<br>`src/core/fusion/pi-child.ts:273`<br>`src/core/fusion/pi-child.ts:274` |
 | `PI_FUSION_CANDIDATE_OUTPUT_RECOVERY_PATH` | read, remove, write | `src/core/fusion/pi-child.ts:100`<br>`src/core/fusion/pi-child.ts:1879`<br>`src/fusion-child-extension.ts:599` |
 | `PI_FUSION_RESEARCH_ENABLED` | read, remove, write | `src/core/fusion/pi-child.ts:100`<br>`src/core/fusion/pi-child.ts:1902`<br>`src/fusion-child-extension.ts:608` |

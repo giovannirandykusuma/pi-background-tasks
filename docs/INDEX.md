@@ -144,12 +144,12 @@ Generated navigation for every package-local documentation page. This index inte
 | command | `tasks` | `command:tasks` | `always` | yes | `src/extension.ts:789` |
 | tool | `bg_delegate` | `tool:bg_delegate` | `feature:delegate` | yes | `src/delegate-extension.ts:500` |
 | tool | `bg_enable` | `tool:bg_enable` | `any(feature:delegate,feature:fusion)` | yes | `src/tool-groups.ts:146` |
-| tool | `bg_kill` | `tool:bg_kill` | `always` | yes | `src/extension.ts:1193` |
-| tool | `bg_logs` | `tool:bg_logs` | `always` | yes | `src/extension.ts:1148` |
+| tool | `bg_kill` | `tool:bg_kill` | `always` | yes | `src/extension.ts:1187` |
+| tool | `bg_logs` | `tool:bg_logs` | `always` | yes | `src/extension.ts:1143` |
 | tool | `bg_result` | `tool:bg_result` | `any(feature:delegate,feature:fusion)` | yes | `src/delegate-extension.ts:757` |
 | tool | `bg_run` | `tool:bg_run` | `always` | yes | `src/extension.ts:939` |
-| tool | `bg_run_pi_attested` | `tool:bg_run_pi_attested` | `feature:attested` | yes | `src/extension.ts:1048` |
-| tool | `bg_status` | `tool:bg_status` | `always` | yes | `src/extension.ts:1117` |
+| tool | `bg_run_pi_attested` | `tool:bg_run_pi_attested` | `feature:attested` | yes | `src/extension.ts:1045` |
+| tool | `bg_status` | `tool:bg_status` | `always` | yes | `src/extension.ts:1114` |
 | tool | `fusion_investigate` | `tool:fusion_investigate` | `feature:fusion` | yes | `src/fusion-extension.ts:1305` |
 | tool | `fusion_reason` | `tool:fusion_reason` | `feature:fusion` | yes | `src/fusion-extension.ts:1287` |
 | tool | `fusion_research` | `tool:fusion_research` | `feature:fusion` | yes | `src/fusion-extension.ts:1324` |
