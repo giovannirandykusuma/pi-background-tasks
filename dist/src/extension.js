@@ -5,7 +5,7 @@ import { Text } from '@earendil-works/pi-tui';
 import { Type } from 'typebox';
 import { DEFAULT_LOG_BYTES, MAX_LOG_BYTES, deriveCompletionDeliveryGuidance, deriveTaskNameFromCommand, formatSnapshotList, formatUpdateSegment, isNewerVersion, normalizeMaxBytes, normalizeTaskName, parseBgCommandArgs, taskDisplayName, truncateChars, ReloadSurvivalError, rejectSurvivalForTaskKind, } from './core/common.js';
 import { fetchLatestVersion, readPackageInfo, } from './core/update-check.js';
-import { BackgroundTaskRegistry } from './core/registry.js';
+import { BackgroundTaskRegistry, } from './core/registry.js';
 import { getProcessReloadShellOwnerV1, makeReloadShellIdentity, } from './core/reload-shell-owner.js';
 import { createShellPolicyGuidanceHandler, initializeShellPolicy } from './core/shell-policy.js';
 import { installBackgroundTaskExtensionApi, } from './core/extension-api.js';
@@ -450,20 +450,32 @@ export default async function backgroundTasksExtension(pi) {
         }
     }
     pi.registerMessageRenderer('background-task-notification', (message, _options, theme) => {
-        const task = message.details;
-        const status = task?.status ?? 'completed';
-        const color = status === 'completed'
-            ? 'success'
-            : status === 'failed'
-                ? 'error'
-                : status === 'killed'
-                    ? 'warning'
-                    : 'accent';
-        const id = task?.id ?? 'background task';
-        const name = task ? taskDisplayName(task) : 'Background task';
-        const output = task?.outputPath ? `\n${theme.fg('dim', `Output: ${task.outputPath}`)}` : '';
-        const error = task?.error ? `\n${theme.fg('error', task.error)}` : '';
-        return new Text(`${theme.fg(color, `[bg ${status}]`)} ${theme.fg('accent', name)} ${theme.fg('dim', `(${id})`)}${output}${error}`, 0, 0);
+        const details = message.details;
+        const renderTask = (task, withDetails) => {
+            const status = task?.status ?? 'completed';
+            const color = status === 'completed'
+                ? 'success'
+                : status === 'failed'
+                    ? 'error'
+                    : status === 'killed'
+                        ? 'warning'
+                        : 'accent';
+            const id = task?.id ?? 'background task';
+            const name = task ? taskDisplayName(task) : 'Background task';
+            const head = `${theme.fg(color, `[bg ${status}]`)} ${theme.fg('accent', name)} ${theme.fg('dim', `(${id})`)}`;
+            if (!withDetails)
+                return head;
+            const output = task?.outputPath ? `\n${theme.fg('dim', `Output: ${task.outputPath}`)}` : '';
+            const error = task?.error ? `\n${theme.fg('error', task.error)}` : '';
+            return `${head}${output}${error}`;
+        };
+        const batch = details?.tasks;
+        if (batch !== undefined && batch.length >= 2) {
+            const header = theme.fg('accent', `Background tasks finished: ${String(batch.length)}`);
+            const lines = batch.map((task) => renderTask(task, false));
+            return new Text([header, ...lines].join('\n'), 0, 0);
+        }
+        return new Text(renderTask(details, true), 0, 0);
     });
     async function scheduleUpdateCheck(ctx) {
         if (disposed || updateCheckStarted)

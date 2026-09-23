@@ -25,7 +25,7 @@ Every registration-owning function, imported registrar, and supported activation
 - Governed production sources: 60
 - Tool contracts extracted: 11
 - Schema IDs extracted: 48
-- Environment variable references extracted: 54
+- Environment variable references extracted: 55
 - Behavioral attestation receipts not passing: 9
 - Receipt store: `docs/attestations.json`
 

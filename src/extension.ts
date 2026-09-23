@@ -43,7 +43,11 @@ import {
   readPackageInfo,
   type FetchLatestVersionOptions,
 } from './core/update-check.js';
-import { BackgroundTaskRegistry, type BackgroundTaskContext } from './core/registry.js';
+import {
+  BackgroundTaskRegistry,
+  type BackgroundTaskContext,
+  type CompletionNotificationDetails,
+} from './core/registry.js';
 import {
   getProcessReloadShellOwnerV1,
   makeReloadShellIdentity,
@@ -624,28 +628,35 @@ export default async function backgroundTasksExtension(pi: ExtensionAPI): Promis
     }
   }
 
-  pi.registerMessageRenderer<BgTaskSnapshot>(
+  pi.registerMessageRenderer<CompletionNotificationDetails>(
     'background-task-notification',
     (message, _options, theme) => {
-      const task = message.details;
-      const status = task?.status ?? 'completed';
-      const color: ThemeColor =
-        status === 'completed'
-          ? 'success'
-          : status === 'failed'
-            ? 'error'
-            : status === 'killed'
-              ? 'warning'
-              : 'accent';
-      const id = task?.id ?? 'background task';
-      const name = task ? taskDisplayName(task) : 'Background task';
-      const output = task?.outputPath ? `\n${theme.fg('dim', `Output: ${task.outputPath}`)}` : '';
-      const error = task?.error ? `\n${theme.fg('error', task.error)}` : '';
-      return new Text(
-        `${theme.fg(color, `[bg ${status}]`)} ${theme.fg('accent', name)} ${theme.fg('dim', `(${id})`)}${output}${error}`,
-        0,
-        0,
-      );
+      const details = message.details;
+      const renderTask = (task: BgTaskSnapshot | undefined, withDetails: boolean): string => {
+        const status = task?.status ?? 'completed';
+        const color: ThemeColor =
+          status === 'completed'
+            ? 'success'
+            : status === 'failed'
+              ? 'error'
+              : status === 'killed'
+                ? 'warning'
+                : 'accent';
+        const id = task?.id ?? 'background task';
+        const name = task ? taskDisplayName(task) : 'Background task';
+        const head = `${theme.fg(color, `[bg ${status}]`)} ${theme.fg('accent', name)} ${theme.fg('dim', `(${id})`)}`;
+        if (!withDetails) return head;
+        const output = task?.outputPath ? `\n${theme.fg('dim', `Output: ${task.outputPath}`)}` : '';
+        const error = task?.error ? `\n${theme.fg('error', task.error)}` : '';
+        return `${head}${output}${error}`;
+      };
+      const batch = details?.tasks;
+      if (batch !== undefined && batch.length >= 2) {
+        const header = theme.fg('accent', `Background tasks finished: ${String(batch.length)}`);
+        const lines = batch.map((task) => renderTask(task, false));
+        return new Text([header, ...lines].join('\n'), 0, 0);
+      }
+      return new Text(renderTask(details, true), 0, 0);
     },
   );
 

@@ -12,6 +12,7 @@ import {
   BackgroundTaskRegistry,
   WIN32_CMD_PI_TELEMETRY_UNAVAILABLE_REASON,
   commandMayLaunchPiAgent,
+  resolveNotifyBatchMs,
   type BackgroundTaskContext,
   type BackgroundTaskSpawn,
   type CompletionNotificationMessage,
@@ -130,6 +131,7 @@ interface HarnessOptions {
   spawn?: BackgroundTaskSpawn;
   modelRegistry?: BackgroundTaskContext['modelRegistry'];
   reloadShellOwner?: ReloadShellOwnerHubV1;
+  notifyBatchMs?: number;
 }
 
 async function createHarness(options: HarnessOptions = {}) {
@@ -186,6 +188,10 @@ async function createHarness(options: HarnessOptions = {}) {
   if (options.attestedGitSpawn !== undefined)
     registryOptions.attestedGitSpawn = options.attestedGitSpawn;
   if (options.now !== undefined) registryOptions.now = options.now;
+  // Tests that do not exercise coalescing keep synchronous, per-task delivery;
+  // an explicit notifyBatchMs or PI_BG_NOTIFY_BATCH_MS in env opts into batching.
+  if (options.notifyBatchMs !== undefined) registryOptions.notifyBatchMs = options.notifyBatchMs;
+  else if (options.env?.['PI_BG_NOTIFY_BATCH_MS'] === undefined) registryOptions.notifyBatchMs = 0;
   if (options.killProcess !== undefined) registryOptions.killProcess = options.killProcess;
   if (options.killTree !== undefined) registryOptions.killTree = options.killTree;
   const registry = new BackgroundTaskRegistry(registryOptions);
@@ -2676,6 +2682,156 @@ setInterval(() => {}, 1000);
       assert.equal(note.message.details.outputPath, task.outputPath);
       assert.deepEqual(note.options, { deliverAs: 'followUp', triggerTurn: true });
     } finally { await cleanup(h.root); }
+  });
+
+  void it('coalesces completions within the batch window into one notification', async () => {
+    const h = await createHarness({ notifyBatchMs: 200 });
+    try {
+      const a = await startFakeTask(h, 'Batch A');
+      const b = await h.registry.startTask(h.ctx, 'node b.js', {
+        name: 'Batch B',
+        isAgent: false,
+        notifyOnCompletion: true,
+        triggerOnCompletion: false,
+      });
+      const bChild = lastSpawn(h).child;
+      const c = await h.registry.startTask(h.ctx, 'node c.js', {
+        name: 'Batch C',
+        isAgent: false,
+        notifyOnCompletion: true,
+        triggerOnCompletion: false,
+      });
+      const cChild = lastSpawn(h).child;
+      const silent = await h.registry.startTask(h.ctx, 'node silent.js', {
+        name: 'Silent',
+        isAgent: false,
+        notifyOnCompletion: false,
+      });
+      const silentChild = lastSpawn(h).child;
+      a.child.close(0, null);
+      bChild.close(2, null);
+      cChild.close(0, null);
+      silentChild.close(0, null);
+      const tasks = [a.task, b, c];
+      await waitFor(() => tasks.every((task) => task.notified), 'batched tasks marked notified');
+      await waitFor(() => h.notifications.length === 1, 'one batched notification');
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      assert.equal(h.notifications.length, 1);
+      assert.equal(silent.notified, false);
+      const note = h.notifications[0];
+      assert.ok(note);
+      const listed = note.message.details.tasks ?? [];
+      const byId = (x: { id: string }, y: { id: string }) => x.id.localeCompare(y.id);
+      assert.deepEqual(
+        listed
+          .map((task) => ({ id: task.id, status: task.status, outputPath: task.outputPath }))
+          .sort(byId),
+        tasks
+          .map((task) => ({ id: task.id, status: task.status, outputPath: task.outputPath }))
+          .sort(byId),
+      );
+      assert.equal(note.message.details.id, listed[0]?.id);
+      const lines = note.message.content.split('\n');
+      assert.equal(lines[0], 'Background tasks finished: 3');
+      for (const task of tasks) {
+        assert.equal(lines.filter((line) => line.includes(`(${task.id})`)).length, 1);
+        assert.ok(note.message.content.includes(task.outputPath));
+      }
+      assert.match(note.message.content, new RegExp(`failed: Batch B \\(${b.id}\\) \\| exit 2`));
+      const guidance =
+        'Terminal state and output metadata are durable. Do not call bg_status to reconfirm; use bg_logs only if output is needed.';
+      assert.equal(note.message.content.split(guidance).length - 1, 1);
+      assert.equal(lines.at(-1), guidance);
+      assert.deepEqual(note.options, { deliverAs: 'followUp', triggerTurn: true });
+    } finally {
+      await cleanup(h.root);
+    }
+  });
+
+  void it('batched notification wakes only when some task requests it', async () => {
+    const h = await createHarness({ notifyBatchMs: 150 });
+    try {
+      const children: FakeChild[] = [];
+      for (const name of ['Quiet A', 'Quiet B']) {
+        await h.registry.startTask(h.ctx, 'node q.js', {
+          name,
+          isAgent: false,
+          notifyOnCompletion: true,
+          triggerOnCompletion: false,
+        });
+        children.push(lastSpawn(h).child);
+      }
+      for (const child of children) child.close(0, null);
+      await waitFor(() => h.notifications.length === 1, 'quiet batch');
+      assert.equal(h.notifications[0]?.message.details.tasks?.length, 2);
+      assert.deepEqual(h.notifications[0]?.options, { deliverAs: 'followUp', triggerTurn: false });
+    } finally {
+      await cleanup(h.root);
+    }
+  });
+
+  void it('returns every batched task to un-notified when the batch send fails', async () => {
+    let attempts = 0;
+    const h = await createHarness({
+      notifyBatchMs: 100,
+      sendCompletionNotification: () => {
+        attempts++;
+        throw new Error('send failed');
+      },
+    });
+    try {
+      const a = await startFakeTask(h, 'Fail A');
+      const b = await startFakeTask(h, 'Fail B');
+      a.child.close(0, null);
+      b.child.close(0, null);
+      await waitFor(() => h.errors.length > 0, 'batch failure log');
+      await waitFor(() => !a.task.notified && !b.task.notified, 'batch un-notified');
+      assert.equal(attempts, 1);
+      assert.match(h.errors.flat().join(' '), /send failed/);
+      for (const task of [a.task, b.task]) {
+        const metadata = await readJsonEventually(task.metadataAbsPath);
+        assert.equal(metadata['notified'], false);
+      }
+    } finally {
+      await cleanup(h.root);
+    }
+  });
+
+  void it('drops buffered notifications when shutdown begins', async () => {
+    const h = await createHarness({ notifyBatchMs: 150 });
+    try {
+      const a = await startFakeTask(h, 'Shutdown A');
+      a.child.close(0, null);
+      await waitFor(() => a.task.notified, 'buffered completion');
+      h.registry.setShuttingDown(true);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      assert.equal(h.notifications.length, 0);
+      assert.equal(a.task.notified, false);
+    } finally {
+      await cleanup(h.root);
+    }
+  });
+
+  void it('sends immediately when batching is disabled', async () => {
+    const h = await createHarness({ env: { ...process.env, PI_BG_NOTIFY_BATCH_MS: '0' } });
+    try {
+      const a = await startFakeTask(h, 'Immediate A');
+      const b = await startFakeTask(h, 'Immediate B');
+      a.child.close(0, null);
+      b.child.close(0, null);
+      await waitFor(() => h.notifications.length === 2, 'two immediate notifications');
+      for (const note of h.notifications) assert.equal(note.message.details.tasks, undefined);
+    } finally {
+      await cleanup(h.root);
+    }
+  });
+
+  void it('resolves the batch window from PI_BG_NOTIFY_BATCH_MS', () => {
+    assert.equal(resolveNotifyBatchMs({}), 250);
+    assert.equal(resolveNotifyBatchMs({ PI_BG_NOTIFY_BATCH_MS: '0' }), 0);
+    assert.equal(resolveNotifyBatchMs({ PI_BG_NOTIFY_BATCH_MS: '40' }), 40);
+    assert.equal(resolveNotifyBatchMs({ PI_BG_NOTIFY_BATCH_MS: 'nope' }), 250);
+    assert.equal(resolveNotifyBatchMs({ PI_BG_NOTIFY_BATCH_MS: '-5' }), 250);
   });
 
   void it('finalizes and notifies once under error/close and output-cap races', async () => {

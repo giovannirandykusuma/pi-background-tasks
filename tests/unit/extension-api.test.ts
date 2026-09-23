@@ -4,7 +4,8 @@ import { EventEmitter } from 'node:events';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import type { EventBus } from '@earendil-works/pi-coding-agent';
+import type { EventBus, ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import backgroundTasksExtension from '../../src/extension.js';
 import {
   BG_EXTENSION_CAPABILITIES,
   BG_REQUEST_CHANNEL,
@@ -984,5 +985,64 @@ void describe('background EventBus protocol', () => {
     } finally {
       await rm(h.root, { recursive: true, force: true });
     }
+  });
+});
+
+type NotificationRenderer = (
+  message: { details: unknown },
+  options: unknown,
+  theme: { fg: (color: string, text: string) => string },
+) => { render(width: number): string[] };
+
+async function captureNotificationRenderer(): Promise<NotificationRenderer> {
+  const renderers = new Map<string, NotificationRenderer>();
+  const target: Record<string, unknown> = {};
+  const pi = new Proxy(target, {
+    get(_target, key) {
+      if (key === 'events') return new MemoryEventBus();
+      if (key === 'registerMessageRenderer')
+        return (type: string, renderer: NotificationRenderer) => {
+          renderers.set(type, renderer);
+        };
+      return () => undefined;
+    },
+  });
+  await backgroundTasksExtension(pi as unknown as ExtensionAPI);
+  const renderer = renderers.get('background-task-notification');
+  assert.ok(renderer, 'notification renderer must be registered');
+  return renderer;
+}
+
+void describe('background-task-notification renderer', () => {
+  const theme = { fg: (_color: string, text: string) => text };
+  const snap = (id: string, status: BgTaskSnapshot['status']): BgTaskSnapshot =>
+    ({
+      id,
+      name: `Task ${id}`,
+      command: 'true',
+      status,
+      outputPath: `.pi/tasks/${id}.log`,
+    }) as BgTaskSnapshot;
+
+  void it('renders a single task with its output path', async () => {
+    const render = await captureNotificationRenderer();
+    const lines = render({ details: snap('b1', 'completed') }, {}, theme)
+      .render(200)
+      .map((line) => line.trimEnd());
+    assert.deepEqual(lines, ['[bg completed] Task b1 (b1)', 'Output: .pi/tasks/b1.log']);
+  });
+
+  void it('renders one line per task for a batch', async () => {
+    const render = await captureNotificationRenderer();
+    const tasks = [snap('b1', 'completed'), snap('b2', 'failed'), snap('b3', 'killed')];
+    const lines = render({ details: { ...tasks[0], tasks } }, {}, theme)
+      .render(200)
+      .map((line) => line.trimEnd());
+    assert.deepEqual(lines, [
+      'Background tasks finished: 3',
+      '[bg completed] Task b1 (b1)',
+      '[bg failed] Task b2 (b2)',
+      '[bg killed] Task b3 (b3)',
+    ]);
   });
 });

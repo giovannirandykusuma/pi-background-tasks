@@ -20,7 +20,20 @@ export const TERMINAL_PUBLICATION_MAX_ATTEMPTS = 3;
 export const TERMINAL_PUBLICATION_RETRY_MS = 100;
 export const TASK_ADMISSION_TIMEOUT_MS = 30_000;
 const TERMINAL_PUBLICATION_DIAGNOSTIC_CHARS = 500;
+/** Default completion-notification coalescing window. */
+export const NOTIFY_BATCH_MS = 250;
+/** A steady stream of completions can extend a batch by at most this multiple of the window. */
+const NOTIFY_BATCH_MAX_WAIT_FACTOR = 4;
 const TASK_NOTIFICATION_GUIDANCE = 'Terminal state and output metadata are durable. Do not call bg_status to reconfirm; use bg_logs only if output is needed.';
+export function resolveNotifyBatchMs(env) {
+    const raw = env['PI_BG_NOTIFY_BATCH_MS'];
+    if (raw === undefined || raw.trim() === '')
+        return NOTIFY_BATCH_MS;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0)
+        return NOTIFY_BATCH_MS;
+    return Math.floor(parsed);
+}
 function fusionGuidance(task) {
     if (task.fusion === undefined)
         return undefined;
@@ -41,6 +54,25 @@ function singleTaskNotificationContent(task) {
     ]
         .filter(Boolean)
         .join('\n');
+}
+function batchNotificationContent(tasks) {
+    const lines = [`Background tasks finished: ${String(tasks.length)}`];
+    for (const task of tasks) {
+        const parts = [`- ${task.status}: ${taskDisplayName(task)} (${task.id})`];
+        if (task.exitCode !== undefined)
+            parts.push(`exit ${String(task.exitCode)}`);
+        parts.push(`output: ${task.outputPath}`);
+        if (task.error)
+            parts.push(`error: ${task.error.replace(/\s*\r?\n\s*/g, ' ')}`);
+        lines.push(parts.join(' | '));
+    }
+    for (const task of tasks) {
+        const guidance = fusionGuidance(task);
+        if (guidance !== undefined)
+            lines.push(guidance);
+    }
+    lines.push(TASK_NOTIFICATION_GUIDANCE);
+    return lines.join('\n');
 }
 const TELEMETRY_BUFFER_CHARS = 512 * 1024;
 export class BackgroundTaskAdmissionClosedError extends Error {
@@ -572,6 +604,10 @@ export class BackgroundTaskRegistry {
     logger;
     onChange;
     sendCompletionNotification;
+    notifyBatchMs;
+    pendingNotifications = [];
+    notifyFlushTimer;
+    notifyBatchStartedAt = 0;
     publishTerminalSnapshot;
     posixProcessGroupKillStates = new WeakMap();
     windowsKillStates = new WeakMap();
@@ -612,6 +648,8 @@ export class BackgroundTaskRegistry {
         this.sendCompletionNotification = options.sendCompletionNotification;
         this.publishTerminalSnapshot = options.publishTerminal ?? noopOnChange;
         this.reloadShellOwner = options.reloadShellOwner;
+        const batchMs = options.notifyBatchMs ?? resolveNotifyBatchMs(this.env);
+        this.notifyBatchMs = Number.isFinite(batchMs) && batchMs > 0 ? Math.floor(batchMs) : 0;
     }
     isShuttingDown() {
         return this.shuttingDown;
@@ -743,6 +781,9 @@ export class BackgroundTaskRegistry {
     setShuttingDown(value) {
         if (value) {
             this.shuttingDown = true;
+            // Notifications are never delivered while shutting down; buffered ones are
+            // dropped exactly as an immediate send would have been suppressed.
+            this.dropPendingNotifications();
             this.closeTaskAdmissions();
             this.closeTerminalPublication('registry_shutdown');
             return;
@@ -2956,7 +2997,9 @@ export class BackgroundTaskRegistry {
                 const token = execution.beginNotification(lease);
                 if (token !== undefined) {
                     try {
-                        this.notifyCompletion(task);
+                        // Survivor delivery is token-bracketed and the execution is released
+                        // right after, so it must be sent synchronously, never buffered.
+                        this.notifyCompletion(task, { immediate: true });
                         execution.finishNotification(token, task.notified);
                     }
                     catch (error) {
@@ -3206,22 +3249,92 @@ export class BackgroundTaskRegistry {
         }, TERMINAL_PUBLICATION_RETRY_MS);
         task.terminalPublishRetryHandle.unref();
     }
-    notifyCompletion(task) {
+    notifyCompletion(task, options = {}) {
         if (!task.notifyOnCompletion || task.notified || this.shuttingDown)
             return;
         task.notified = true;
-        const content = singleTaskNotificationContent(task);
+        if (this.notifyBatchMs === 0 || options.immediate === true) {
+            this.sendNotificationBatch([task]);
+            return;
+        }
+        this.pendingNotifications.push(task);
+        const now = Date.now();
+        if (this.notifyFlushTimer === undefined) {
+            this.notifyBatchStartedAt = now;
+        }
+        else {
+            clearTimeout(this.notifyFlushTimer);
+        }
+        // Debounce: each completion restarts the window, bounded by a max wait so a
+        // steady stream of completions cannot postpone delivery indefinitely.
+        const deadline = this.notifyBatchStartedAt + this.notifyBatchMs * NOTIFY_BATCH_MAX_WAIT_FACTOR;
+        const delay = Math.max(0, Math.min(this.notifyBatchMs, deadline - now));
+        this.notifyFlushTimer = setTimeout(() => {
+            void this.flushPendingNotifications();
+        }, delay);
+    }
+    /** Send every buffered completion as one message. Resolves after failure bookkeeping. */
+    async flushPendingNotifications() {
+        if (this.notifyFlushTimer !== undefined) {
+            clearTimeout(this.notifyFlushTimer);
+            this.notifyFlushTimer = undefined;
+        }
+        const batch = this.pendingNotifications;
+        this.pendingNotifications = [];
+        if (batch.length === 0)
+            return;
+        if (this.shuttingDown) {
+            await this.revertNotified(batch);
+            return;
+        }
+        try {
+            this.sendNotificationBatch(batch);
+        }
+        catch (error) {
+            await this.revertNotified(batch);
+            this.logger.error('[background-tasks] notification failed:', error);
+        }
+    }
+    dropPendingNotifications() {
+        if (this.notifyFlushTimer !== undefined) {
+            clearTimeout(this.notifyFlushTimer);
+            this.notifyFlushTimer = undefined;
+        }
+        const batch = this.pendingNotifications;
+        this.pendingNotifications = [];
+        if (batch.length > 0)
+            void this.revertNotified(batch);
+    }
+    async revertNotified(batch) {
+        for (const task of batch)
+            task.notified = false;
+        await Promise.all(batch.map((task) => this.writeMetadata(task).catch((metadataError) => {
+            this.logger.error(`[background-tasks] failed to update notification metadata for ${task.id}:`, metadataError);
+        })));
+        this.onChange();
+    }
+    /** Synchronously deliver one message for `batch`; on failure every task is un-notified and the error rethrown. */
+    sendNotificationBatch(batch) {
+        const [first] = batch;
+        if (first === undefined)
+            return;
+        const single = batch.length === 1;
+        const content = single ? singleTaskNotificationContent(first) : batchNotificationContent(batch);
+        const details = single
+            ? snapshot(first)
+            : { ...snapshot(first), tasks: batch.map((task) => snapshot(task)) };
         try {
             this.sendCompletionNotification({
                 customType: 'background-task-notification',
                 content,
                 display: true,
-                details: snapshot(task),
-            }, { deliverAs: 'followUp', triggerTurn: task.triggerOnCompletion });
+                details,
+            }, { deliverAs: 'followUp', triggerTurn: batch.some((task) => task.triggerOnCompletion) });
         }
         catch (error) {
-            task.notified = false;
-            throw new Error(`Failed to send background task notification for ${task.id}: ${error instanceof Error ? error.message : String(error)}`);
+            for (const task of batch)
+                task.notified = false;
+            throw new Error(`Failed to send background task notification for ${batch.map((task) => task.id).join(', ')}: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
     async finalizeTask(task, status, exitCode, signal, error) {
