@@ -26,20 +26,33 @@ Background tasks can finish silently, notify the terminal, or notify and wake th
 - `bg_run` defaults to durable notification plus follow-up turn: `notifyOnCompletion:true` and `triggerOnCompletion:true`.
 - `bg_status` and `bg_logs` are point-in-time inspection tools, not polling primitives.
 - Tool-launched Fusion tasks default to notification plus follow-up wake and are retrieved once with `bg_result`; `/fusion` uses notification-only.
-- A received `<background-task-notification>` is metadata-backed terminal-status truth. The output stream has finished/closed; after a requested POSIX tree stop, the originally owned process group has also been observed gone, while a force/proof failure is delivered as `failed` rather than a successful kill. Ordinary `.output` bytes are not explicitly fsynced. Do not call `bg_status` only to reconfirm status; call `bg_logs` only if output bytes are needed.
+- A received background-task notification is metadata-backed terminal-status truth. The output stream has finished/closed; after a requested POSIX tree stop, the originally owned process group has also been observed gone, while a force/proof failure is delivered as `failed` rather than a successful kill. Ordinary `.output` bytes are not explicitly fsynced. Do not call `bg_status` only to reconfirm status; call `bg_logs` only if output bytes are needed.
 
 ## Notification payload
 
 When enabled and not during shutdown, terminal completion sends a custom message with:
 
-- `<task-id>`
-- `<task-name>`
-- `<status>` (`completed`, `failed`, or `killed`)
-- optional `<exit-code>`
-- optional `<error>`
-- `<output-file>`
-- `<summary>`
-- `<guidance>` that says terminal state and output metadata are durable and not to reconfirm with `bg_status`.
+- A readable first line: `Background task <status>: <name> (<id>)` (`completed`, `failed`, or `killed`).
+- Optional `Exit code: ...` and full `Error: ...` lines.
+- `Output: ...` with the task output path; output is not fetched automatically.
+- Guidance that terminal state and output metadata are durable and not to reconfirm with `bg_status`;
+  Fusion completion retains its artifact path and `bg_result` retrieval instructions.
+
+Content is plain text, not XML, so clients that do not implement Pi's TUI renderer can display it
+readably. `customType: background-task-notification`, `display:true`, the structured snapshot,
+`deliverAs:followUp`, and task-owned `triggerTurn` are unchanged. No synthetic tool call is created.
+
+### Batched completions
+
+Completions that land within the batch window (default 250 ms, debounced, capped at 4x the window;
+`PI_BG_NOTIFY_BATCH_MS`, `0` disables) are delivered as ONE message, so N tasks finishing together
+wake one follow-up turn instead of N. A batch of one is the single-task message above. A batch of two
+or more reads `Background tasks finished: N`, then one `- <status>: <name> (<id>) | exit … | output: …`
+line per task, each Fusion task's own `bg_result` line, and the shared guidance once. Its `details`
+keep the first task's snapshot fields at the top level and add `tasks[]` with every snapshot;
+`triggerTurn` is true if any task requested it. A failed send restores `notified:false` for every task
+in the batch; shutdown drops the buffer the same way. Reload survivors are delivered immediately and
+never enter a batch, because the reload handoff releases the task right after its send.
 
 The structured details contain the task snapshot, including delivery flags and `notified` state.
 
