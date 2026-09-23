@@ -151,6 +151,17 @@ More walkthrough detail: [Getting started](docs/getting-started.md).
 
 See [Choose a workflow](docs/choose-a-workflow.md) for a decision tree and tradeoffs.
 
+### Batched completion notifications
+
+When several background tasks finish close together, Pi gets **one** combined `background-task-notification`, so it runs one follow-up turn instead of one per task. Completions are buffered for a short debounce window (default **250 ms**). Each new completion restarts the window, and the window cannot stretch past 4× its length. When it closes, one message goes out:
+
+- **One task:** the message is exactly the same as without batching.
+- **Two or more tasks:** the content starts with `Background tasks finished: N`. Then comes one line per task (status, name, id, exit code, output path), then each Fusion task's own `bg_result` instruction, then the shared guidance once. `details` keeps the first task's snapshot fields at the top level for backward compatibility and adds `details.tasks` listing every task's snapshot.
+- The batch wakes a follow-up turn if **any** task in it has `triggerOnCompletion: true`.
+- Tasks with `notifyOnCompletion: false` are never buffered. If sending fails, every task in the batch goes back to un-notified. Notifications still buffered when the session shuts down are dropped, the same as completions that arrive during shutdown.
+
+Set `PI_BG_NOTIFY_BATCH_MS` to change the window in milliseconds. Set it to `0` to turn batching off and send each notification immediately.
+
 ## Copy-paste examples
 
 ### `bg_run`: start long shell work

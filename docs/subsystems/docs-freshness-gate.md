@@ -18,8 +18,8 @@ This authored section defines the boundary: documentation facts are extracted fr
 - Governed production sources: 50
 - Tool contracts extracted: 11
 - Schema IDs extracted: 46
-- Environment variable references extracted: 49
-- Behavioral attestation receipts not passing: 7
+- Environment variable references extracted: 50
+- Behavioral attestation receipts not passing: 8
 - Receipt store: `docs/attestations.json`
 
 `npm run docs:verify` is read-only: it renders generated files twice in memory and compares them with committed bytes. `npm run docs:generate` is the only docs writer.

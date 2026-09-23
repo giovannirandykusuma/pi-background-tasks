@@ -69,6 +69,58 @@ export const MAX_OUTPUT_BYTES = Number(process.env['PI_BG_MAX_OUTPUT_BYTES'] ?? 
 export const KILL_GRACE_MS = 3000;
 export const STOP_WAIT_MS = KILL_GRACE_MS + 1500;
 export const MAX_RECENT_TASKS = 100;
+/** Default completion-notification coalescing window. */
+export const NOTIFY_BATCH_MS = 250;
+/** A steady stream of completions can extend a batch by at most this multiple of the window. */
+const NOTIFY_BATCH_MAX_WAIT_FACTOR = 4;
+const TASK_NOTIFICATION_GUIDANCE =
+  'Terminal state and output metadata are durable. Do not call bg_status to reconfirm; use bg_logs only if output is needed.';
+
+export function resolveNotifyBatchMs(env: NodeJS.ProcessEnv): number {
+  const raw = env['PI_BG_NOTIFY_BATCH_MS'];
+  if (raw === undefined || raw.trim() === '') return NOTIFY_BATCH_MS;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return NOTIFY_BATCH_MS;
+  return Math.floor(parsed);
+}
+
+function fusionGuidance(task: BgTask): string | undefined {
+  if (task.fusion === undefined) return undefined;
+  return task.status === 'completed'
+    ? `Fusion result is durably committed at ${task.fusion.artifactDir}. Call bg_result({taskId:${JSON.stringify(task.id)}}) once to retrieve it; do not poll.`
+    : `Fusion ended ${task.status}. Inspect the preserved artifacts at ${task.fusion.artifactDir}; do not poll.`;
+}
+
+function singleTaskNotificationContent(task: BgTask): string {
+  const exit = task.exitCode === undefined ? '' : `Exit code: ${String(task.exitCode)}`;
+  const error = task.error ? `Error: ${task.error}` : '';
+  return [
+    `Background task ${task.status}: ${taskDisplayName(task)} (${task.id})`,
+    exit,
+    error,
+    `Output: ${task.outputPath}`,
+    fusionGuidance(task) ?? TASK_NOTIFICATION_GUIDANCE,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function batchNotificationContent(tasks: readonly BgTask[]): string {
+  const lines = [`Background tasks finished: ${String(tasks.length)}`];
+  for (const task of tasks) {
+    const parts = [`- ${task.status}: ${taskDisplayName(task)} (${task.id})`];
+    if (task.exitCode !== undefined) parts.push(`exit ${String(task.exitCode)}`);
+    parts.push(`output: ${task.outputPath}`);
+    if (task.error) parts.push(`error: ${task.error.replace(/\s*\r?\n\s*/g, ' ')}`);
+    lines.push(parts.join(' | '));
+  }
+  for (const task of tasks) {
+    const guidance = fusionGuidance(task);
+    if (guidance !== undefined) lines.push(guidance);
+  }
+  lines.push(TASK_NOTIFICATION_GUIDANCE);
+  return lines.join('\n');
+}
 const TELEMETRY_BUFFER_CHARS = 512 * 1024;
 export const WIN32_CMD_PI_TELEMETRY_UNAVAILABLE_REASON =
   'win32-cmd-cannot-safely-intercept-pi-argv';
@@ -130,11 +182,21 @@ interface WindowsKillState {
   forceFailureListeners?: Array<(error: Error) => void> | undefined;
 }
 
+/**
+ * Structured notification details. For a single task this is exactly that
+ * task's snapshot. When several completions are coalesced into one message the
+ * first task's snapshot fields are kept at the top level for backward
+ * compatibility and `tasks` lists every task in the batch (in completion order).
+ */
+export type CompletionNotificationDetails = BgTaskSnapshot & {
+  tasks?: BgTaskSnapshot[] | undefined;
+};
+
 export interface CompletionNotificationMessage {
   customType: 'background-task-notification';
   content: string;
   display: true;
-  details: BgTaskSnapshot;
+  details: CompletionNotificationDetails;
 }
 
 export interface CompletionNotificationOptions {
@@ -162,6 +224,12 @@ export interface BackgroundTaskRegistryOptions {
   maxRecentTasks?: number;
   killGraceMs?: number;
   stopWaitMs?: number;
+  /**
+   * Coalescing window for completion notifications in milliseconds. Defaults to
+   * `PI_BG_NOTIFY_BATCH_MS` from `env`, else {@link NOTIFY_BATCH_MS}. `0`
+   * disables batching and sends each notification synchronously.
+   */
+  notifyBatchMs?: number;
   logger?: Pick<Console, 'error'>;
 }
 
@@ -734,6 +802,10 @@ export class BackgroundTaskRegistry {
   private readonly sendCompletionNotification: CompletionNotificationSender;
   private readonly publishTerminalSnapshot: (task: BgTaskSnapshot) => void;
   private readonly windowsKillStates = new WeakMap<BgTask, WindowsKillState>();
+  private readonly notifyBatchMs: number;
+  private pendingNotifications: BgTask[] = [];
+  private notifyFlushTimer: NodeJS.Timeout | undefined;
+  private notifyBatchStartedAt = 0;
 
   constructor(options: BackgroundTaskRegistryOptions) {
     this.spawn =
@@ -758,6 +830,8 @@ export class BackgroundTaskRegistry {
     this.onChange = options.onChange ?? noopOnChange;
     this.sendCompletionNotification = options.sendCompletionNotification;
     this.publishTerminalSnapshot = options.publishTerminal ?? noopOnChange;
+    const batchMs = options.notifyBatchMs ?? resolveNotifyBatchMs(this.env);
+    this.notifyBatchMs = Number.isFinite(batchMs) && batchMs > 0 ? Math.floor(batchMs) : 0;
   }
 
   isShuttingDown(): boolean {
@@ -766,6 +840,9 @@ export class BackgroundTaskRegistry {
 
   setShuttingDown(value: boolean): void {
     this.shuttingDown = value;
+    // Notifications are never delivered while shutting down; buffered ones are
+    // dropped exactly as an immediate send would have been suppressed.
+    if (value) this.dropPendingNotifications();
   }
 
   allTasks(): BgTask[] {
@@ -2290,39 +2367,95 @@ export class BackgroundTaskRegistry {
   private notifyCompletion(task: BgTask): void {
     if (!task.notifyOnCompletion || task.notified || this.shuttingDown) return;
     task.notified = true;
-    const exit = task.exitCode === undefined ? '' : `Exit code: ${String(task.exitCode)}`;
-    const error = task.error ? `Error: ${task.error}` : '';
-    const taskName = taskDisplayName(task);
-    const guidance =
-      task.fusion === undefined
-        ? 'Terminal state and output metadata are durable. Do not call bg_status to reconfirm; use bg_logs only if output is needed.'
-        : task.status === 'completed'
-          ? `Fusion result is durably committed at ${task.fusion.artifactDir}. Call bg_result({taskId:${JSON.stringify(task.id)}}) once to retrieve it; do not poll.`
-          : `Fusion ended ${task.status}. Inspect the preserved artifacts at ${task.fusion.artifactDir}; do not poll.`;
-    const content = [
-      `Background task ${task.status}: ${taskName} (${task.id})`,
-      exit,
-      error,
-      `Output: ${task.outputPath}`,
-      guidance,
-    ]
-      .filter(Boolean)
-      .join('\n');
+    if (this.notifyBatchMs === 0) {
+      this.sendNotificationBatch([task]);
+      return;
+    }
+    this.pendingNotifications.push(task);
+    const now = Date.now();
+    if (this.notifyFlushTimer === undefined) {
+      this.notifyBatchStartedAt = now;
+    } else {
+      clearTimeout(this.notifyFlushTimer);
+    }
+    // Debounce: each completion restarts the window, bounded by a max wait so a
+    // steady stream of completions cannot postpone delivery indefinitely.
+    const deadline = this.notifyBatchStartedAt + this.notifyBatchMs * NOTIFY_BATCH_MAX_WAIT_FACTOR;
+    const delay = Math.max(0, Math.min(this.notifyBatchMs, deadline - now));
+    this.notifyFlushTimer = setTimeout(() => {
+      void this.flushPendingNotifications();
+    }, delay);
+  }
 
+  /** Send every buffered completion as one message. Resolves after failure bookkeeping. */
+  async flushPendingNotifications(): Promise<void> {
+    if (this.notifyFlushTimer !== undefined) {
+      clearTimeout(this.notifyFlushTimer);
+      this.notifyFlushTimer = undefined;
+    }
+    const batch = this.pendingNotifications;
+    this.pendingNotifications = [];
+    if (batch.length === 0) return;
+    if (this.shuttingDown) {
+      await this.revertNotified(batch);
+      return;
+    }
+    try {
+      this.sendNotificationBatch(batch);
+    } catch (error) {
+      await this.revertNotified(batch);
+      this.logger.error('[background-tasks] notification failed:', error);
+    }
+  }
+
+  private dropPendingNotifications(): void {
+    if (this.notifyFlushTimer !== undefined) {
+      clearTimeout(this.notifyFlushTimer);
+      this.notifyFlushTimer = undefined;
+    }
+    const batch = this.pendingNotifications;
+    this.pendingNotifications = [];
+    if (batch.length > 0) void this.revertNotified(batch);
+  }
+
+  private async revertNotified(batch: readonly BgTask[]): Promise<void> {
+    for (const task of batch) task.notified = false;
+    await Promise.all(
+      batch.map((task) =>
+        this.writeMetadata(task).catch((metadataError: unknown) => {
+          this.logger.error(
+            `[background-tasks] failed to update notification metadata for ${task.id}:`,
+            metadataError,
+          );
+        }),
+      ),
+    );
+    this.onChange();
+  }
+
+  /** Synchronously deliver one message for `batch`; on failure every task is un-notified and the error rethrown. */
+  private sendNotificationBatch(batch: readonly BgTask[]): void {
+    const [first] = batch;
+    if (first === undefined) return;
+    const single = batch.length === 1;
+    const content = single ? singleTaskNotificationContent(first) : batchNotificationContent(batch);
+    const details: CompletionNotificationDetails = single
+      ? snapshot(first)
+      : { ...snapshot(first), tasks: batch.map((task) => snapshot(task)) };
     try {
       this.sendCompletionNotification(
         {
           customType: 'background-task-notification',
           content,
           display: true,
-          details: snapshot(task),
+          details,
         },
-        { deliverAs: 'followUp', triggerTurn: task.triggerOnCompletion },
+        { deliverAs: 'followUp', triggerTurn: batch.some((task) => task.triggerOnCompletion) },
       );
     } catch (error) {
-      task.notified = false;
+      for (const task of batch) task.notified = false;
       throw new Error(
-        `Failed to send background task notification for ${task.id}: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to send background task notification for ${batch.map((task) => task.id).join(', ')}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
