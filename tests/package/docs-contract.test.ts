@@ -107,7 +107,7 @@ void describe('docs package integration contract', () => {
     const always = new Set(
       surfaces.filter((surface) => surface.availability === 'always').map((surface) => surface.id),
     );
-    assert.equal(always.size, 15);
+    assert.equal(always.size, 16);
     const byFeature = new Map<string, ReadonlySet<string>>([
       ['delegate', new Set(['tool:bg_delegate'])],
       [

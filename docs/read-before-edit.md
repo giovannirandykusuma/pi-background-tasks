@@ -100,6 +100,7 @@ Every production file under `src/**` and `extensions/**` has exactly one primary
 | `tool:bg_run` | `always` | yes |
 | `tool:bg_run_pi_attested` | `feature:attested` | yes |
 | `tool:bg_status` | `always` | yes |
+| `tool:bg_wait` | `always` | yes |
 | `tool:fusion_investigate` | `feature:fusion` | yes |
 | `tool:fusion_reason` | `feature:fusion` | yes |
 | `tool:fusion_research` | `feature:fusion` | yes |

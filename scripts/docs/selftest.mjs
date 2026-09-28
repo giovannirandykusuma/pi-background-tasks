@@ -36,9 +36,9 @@ function mustThrow(name, fn, pattern) {
 const codeFacts = buildCodeFacts();
 const docsModel = loadDocsModel();
 
-assert.equal(docsModel.docs.length, 43, 'all docs/**/*.md are governed');
-assert.equal(codeFacts.public_surface_ids.length, 33, 'all command/tool/shortcut/renderer/EventBus/workflow surfaces are extracted');
-assert.equal(codeFacts.default_public_surface_ids.length, 32, 'alternate dock shortcut is the only non-default surface');
+assert.equal(docsModel.docs.length, 44, 'all docs/**/*.md are governed');
+assert.equal(codeFacts.public_surface_ids.length, 34, 'all command/tool/shortcut/renderer/EventBus/workflow surfaces are extracted');
+assert.equal(codeFacts.default_public_surface_ids.length, 33, 'alternate dock shortcut is the only non-default surface');
 assert.equal(surfaceById_early().get('tool:bg_enable')?.availability, 'any(feature:delegate,feature:fusion)', 'bg_enable exists exactly when a result-producing optional group does (eager keeps it inactive)');
 assert.ok(codeFacts.public_surface_ids.includes('eventbus:background-task-v1'));
 assert.ok(codeFacts.public_surface_ids.includes('workflow:research'));

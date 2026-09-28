@@ -3965,3 +3965,60 @@ setInterval(() => {}, 1000);
     }
   });
 });
+
+describe('waitForTask (bg_wait)', () => {
+  it('resolves true at the instant the task becomes terminal, without polling', async () => {
+    const h = await createHarness();
+    try {
+      const { task, child } = await startFakeTask(h, 'Wait Target');
+      let settled: boolean | undefined;
+      const waiting = h.registry.waitForTask(task, 60_000).then((v) => (settled = v));
+      await new Promise((r) => setTimeout(r, 20));
+      assert.equal(settled, undefined, 'must still be blocked while the task runs');
+      child.writeStdout('done-output\n');
+      child.close(0, null);
+      assert.equal(await waiting, true);
+      assert.equal(task.status, 'completed');
+      assert.equal(task.waiters.length, 0, 'waiter removed after wake');
+    } finally {
+      await cleanup(h.root);
+    }
+  });
+
+  it('times out with false, leaves the task running, and removes its waiter', async () => {
+    const h = await createHarness();
+    try {
+      const { task, child } = await startFakeTask(h, 'Wait Timeout');
+      const before = task.waiters.length;
+      assert.equal(await h.registry.waitForTask(task, 30), false);
+      assert.equal(task.status, 'running');
+      assert.equal(task.waiters.length, before, 'no leaked waiter after timeout');
+      child.close(0, null);
+      await waitFor(() => task.status === 'completed', 'completion after timeout');
+    } finally {
+      await cleanup(h.root);
+    }
+  });
+
+  it('returns immediately for an already-terminal task and honours abort', async () => {
+    const h = await createHarness();
+    try {
+      const { task, child } = await startFakeTask(h, 'Wait Abort');
+      const controller = new AbortController();
+      const waiting = h.registry.waitForTask(task, 60_000, controller.signal);
+      controller.abort();
+      assert.equal(await waiting, false);
+      assert.equal(task.waiters.length, 0, 'no leaked waiter after abort');
+      const pre = new AbortController();
+      pre.abort();
+      assert.equal(await h.registry.waitForTask(task, 60_000, pre.signal), false);
+      child.close(1, null);
+      await waitFor(() => task.status !== 'running', 'terminal');
+      const t0 = Date.now();
+      assert.equal(await h.registry.waitForTask(task, 60_000), true);
+      assert.ok(Date.now() - t0 < 50, 'terminal task must not wait');
+    } finally {
+      await cleanup(h.root);
+    }
+  });
+});

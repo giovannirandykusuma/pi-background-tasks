@@ -199,6 +199,7 @@
     "tool:bg_run",
     "tool:bg_run_pi_attested",
     "tool:bg_status",
+    "tool:bg_wait",
     "tool:fusion_investigate",
     "tool:fusion_reason",
     "tool:fusion_research",
@@ -681,6 +682,17 @@
       "review_policy": "contract",
       "stability": "stable"
     },
+    "tools/bg_wait": {
+      "audience": "agent",
+      "covers_sources": [],
+      "covers_surfaces": [
+        "tool:bg_wait"
+      ],
+      "mode": "mixed",
+      "rel": "docs/tools/bg_wait.md",
+      "review_policy": "contract",
+      "stability": "stable"
+    },
     "tools/fusion_investigate": {
       "audience": "agent",
       "covers_sources": [],
@@ -878,6 +890,12 @@
       "rel": "docs/tools/bg_status.md"
     },
     {
+      "doc_id": "tools/bg_wait",
+      "generator": "scripts/docs/generate.mjs",
+      "name": "tool-contract-bg_wait",
+      "rel": "docs/tools/bg_wait.md"
+    },
+    {
       "doc_id": "tools/fusion_investigate",
       "generator": "scripts/docs/generate.mjs",
       "name": "tool-contract-fusion_investigate",
@@ -957,6 +975,7 @@
     "tool:bg_run",
     "tool:bg_run_pi_attested",
     "tool:bg_status",
+    "tool:bg_wait",
     "tool:fusion_investigate",
     "tool:fusion_reason",
     "tool:fusion_research",
@@ -975,7 +994,7 @@
         "id": "command:bg",
         "kind": "command",
         "name": "bg",
-        "source": "src/extension.ts:762"
+        "source": "src/extension.ts:780"
       },
       {
         "availability": "always",
@@ -984,7 +1003,7 @@
         "id": "command:bg-clear",
         "kind": "command",
         "name": "bg-clear",
-        "source": "src/extension.ts:805"
+        "source": "src/extension.ts:823"
       },
       {
         "availability": "always",
@@ -993,7 +1012,7 @@
         "id": "command:bg-tasks",
         "kind": "command",
         "name": "bg-tasks",
-        "source": "src/extension.ts:797"
+        "source": "src/extension.ts:815"
       },
       {
         "availability": "always",
@@ -1002,7 +1021,7 @@
         "id": "command:bg-update",
         "kind": "command",
         "name": "bg-update",
-        "source": "src/extension.ts:813"
+        "source": "src/extension.ts:831"
       },
       {
         "availability": "feature:attribution",
@@ -1038,7 +1057,7 @@
         "id": "command:jobs",
         "kind": "command",
         "name": "jobs",
-        "source": "src/extension.ts:862"
+        "source": "src/extension.ts:880"
       },
       {
         "availability": "always",
@@ -1047,7 +1066,7 @@
         "id": "command:kill",
         "kind": "command",
         "name": "kill",
-        "source": "src/extension.ts:906"
+        "source": "src/extension.ts:924"
       },
       {
         "availability": "always",
@@ -1056,7 +1075,7 @@
         "id": "command:logs",
         "kind": "command",
         "name": "logs",
-        "source": "src/extension.ts:875"
+        "source": "src/extension.ts:893"
       },
       {
         "availability": "always",
@@ -1065,7 +1084,7 @@
         "id": "command:tasks",
         "kind": "command",
         "name": "tasks",
-        "source": "src/extension.ts:789"
+        "source": "src/extension.ts:807"
       }
     ],
     "eventbus": [
@@ -1097,7 +1116,7 @@
         "id": "renderer:background-task-notification",
         "kind": "renderer",
         "name": "background-task-notification",
-        "source": "src/extension.ts:632"
+        "source": "src/extension.ts:650"
       },
       {
         "availability": "feature:fusion",
@@ -1116,7 +1135,7 @@
         "id": "shortcut:ctrl+alt+b",
         "kind": "shortcut",
         "name": "ctrl+alt+b",
-        "source": "src/extension.ts:846"
+        "source": "src/extension.ts:864"
       },
       {
         "availability": "always",
@@ -1125,7 +1144,7 @@
         "id": "shortcut:ctrl+alt+c",
         "kind": "shortcut",
         "name": "ctrl+alt+c",
-        "source": "src/extension.ts:854"
+        "source": "src/extension.ts:872"
       },
       {
         "availability": "dock:shift+down",
@@ -1134,7 +1153,7 @@
         "id": "shortcut:shift+down",
         "kind": "shortcut",
         "name": "shift+down",
-        "source": "src/extension.ts:837"
+        "source": "src/extension.ts:855"
       }
     ],
     "tool": [
@@ -1281,7 +1300,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:1187"
+        "source": "src/extension.ts:1240"
       },
       {
         "availability": "always",
@@ -1316,7 +1335,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:1143"
+        "source": "src/extension.ts:1196"
       },
       {
         "availability": "any(feature:delegate,feature:fusion)",
@@ -1408,7 +1427,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:939"
+        "source": "src/extension.ts:957"
       },
       {
         "availability": "feature:attested",
@@ -1471,7 +1490,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:1045"
+        "source": "src/extension.ts:1063"
       },
       {
         "availability": "always",
@@ -1495,7 +1514,37 @@
           "required": [],
           "type": "object"
         },
-        "source": "src/extension.ts:1114"
+        "source": "src/extension.ts:1132"
+      },
+      {
+        "availability": "always",
+        "default_available": true,
+        "description": "Block until one background task ends or the timeout passes (default 300 s, max 600 s), then return its status and a short output tail. The waiting primitive for callers that are never woken by a completion notification; one call replaces a bg_status polling loop.",
+        "id": "tool:bg_wait",
+        "kind": "tool",
+        "label": "Background Wait",
+        "name": "bg_wait",
+        "promptGuidelines": [
+          "Use bg_wait only when you must have the result in this same turn and no completion notification will wake you; otherwise continue other work or end the turn."
+        ],
+        "promptSnippet": "Block until a background task ends (or timeout) instead of polling bg_status",
+        "schema": {
+          "properties": {
+            "taskId": {
+              "description": "Task ID or unambiguous prefix to wait for",
+              "type": "string"
+            },
+            "timeoutSeconds": {
+              "description": "Longest time to block, in seconds (1-600). Default: 300. On timeout the task keeps running; call bg_wait again.",
+              "type": "number"
+            }
+          },
+          "required": [
+            "taskId"
+          ],
+          "type": "object"
+        },
+        "source": "src/extension.ts:1161"
       },
       {
         "availability": "feature:fusion",
@@ -2120,6 +2169,9 @@
     ],
     "tool:bg_status": [
       "tools/bg_status"
+    ],
+    "tool:bg_wait": [
+      "tools/bg_wait"
     ],
     "tool:fusion_investigate": [
       "tools/fusion_investigate"

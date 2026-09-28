@@ -3610,6 +3610,31 @@ export class BackgroundTaskRegistry {
     this.requestPosixKill(task, signal);
   }
 
+  /**
+   * Block until the task leaves `running`, the timeout elapses, or the signal aborts — the one waiting
+   * primitive for callers that cannot rely on a completion wake-up (e.g. a subagent that is never
+   * re-prompted). Resolves true when the task is terminal. Reuses the task's terminal waiters, so it
+   * costs no polling and wakes at the same instant terminal status is assigned.
+   */
+  waitForTask(task: BgTask, timeoutMs: number, signal?: AbortSignal): Promise<boolean> {
+    if (task.status !== 'running') return Promise.resolve(true);
+    if (signal?.aborted) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const finish = (terminal: boolean) => {
+        clearTimeout(timeout);
+        const idx = task.waiters.indexOf(done);
+        if (idx >= 0) task.waiters.splice(idx, 1);
+        signal?.removeEventListener('abort', aborted);
+        resolve(terminal);
+      };
+      const done = () => finish(true);
+      const aborted = () => finish(task.status !== 'running');
+      const timeout = setTimeout(() => finish(task.status !== 'running'), timeoutMs);
+      task.waiters.push(done);
+      signal?.addEventListener('abort', aborted, { once: true });
+    });
+  }
+
   private waitForEnd(task: BgTask, timeoutMs: number): Promise<boolean> {
     if (task.status !== 'running') return Promise.resolve(true);
     return new Promise((resolve) => {

@@ -17,13 +17,13 @@ Every registration-owning function, imported registrar, and supported activation
 
 <!-- pi-docs:begin name="docs-freshness-gate" generator="scripts/docs/generate.mjs" -->
 - Canonical package version: `2.6.3`
-- Governed markdown docs: 43
-- Public surfaces extracted: 33
-- Public surfaces available by default: 32
+- Governed markdown docs: 44
+- Public surfaces extracted: 34
+- Public surfaces available by default: 33
 - Finite feature values: `process`, `delegate`, `fusion`, `attested`, `attribution`
 - Finite dock shortcut values: `shift+down`, `ctrl+alt+b`, `off`
 - Governed production sources: 61
-- Tool contracts extracted: 12
+- Tool contracts extracted: 13
 - Schema IDs extracted: 48
 - Environment variable references extracted: 56
 - Behavioral attestation receipts not passing: 9

@@ -209,6 +209,24 @@ const BgLogsParams = Type.Object({
   ),
 });
 
+const BG_WAIT_DEFAULT_SECONDS = 300;
+const BG_WAIT_MAX_SECONDS = 600;
+const BG_WAIT_TAIL_BYTES = 4 * 1024;
+
+const BgWaitParams = Type.Object({
+  taskId: Type.String({ description: 'Task ID or unambiguous prefix to wait for' }),
+  timeoutSeconds: Type.Optional(
+    Type.Number({
+      description: `Longest time to block, in seconds (1-${BG_WAIT_MAX_SECONDS}). Default: ${BG_WAIT_DEFAULT_SECONDS}. On timeout the task keeps running; call bg_wait again.`,
+    }),
+  ),
+});
+
+function normalizeWaitSeconds(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) return BG_WAIT_DEFAULT_SECONDS;
+  return Math.min(BG_WAIT_MAX_SECONDS, Math.max(1, Math.floor(value)));
+}
+
 const BgKillParams = Type.Object({
   taskId: Type.String({ description: 'Task ID or unambiguous prefix to stop' }),
 });
@@ -1133,6 +1151,41 @@ export default async function backgroundTasksExtension(pi: ExtensionAPI): Promis
     renderCall(args, theme) {
       return new Text(
         `${theme.fg('toolTitle', theme.bold('bg_status'))}${args.taskId ? ` ${theme.fg('accent', args.taskId)}` : ''}`,
+        0,
+        0,
+      );
+    },
+    renderResult: renderPlainResult,
+  });
+
+  pi.registerTool<typeof BgWaitParams, BgStatusDetails>({
+    name: 'bg_wait',
+    label: 'Background Wait',
+    description:
+      `Block until one background task ends or the timeout passes (default ${BG_WAIT_DEFAULT_SECONDS} s, max ${BG_WAIT_MAX_SECONDS} s), then return its status and a short output tail. The waiting primitive for callers that are never woken by a completion notification; one call replaces a bg_status polling loop.`,
+    promptSnippet:
+      'Block until a background task ends (or timeout) instead of polling bg_status',
+    promptGuidelines: [
+      'Use bg_wait only when you must have the result in this same turn and no completion notification will wake you; otherwise continue other work or end the turn.',
+    ],
+    parameters: BgWaitParams,
+    async execute(_toolCallId, params, signal) {
+      const task = registry.resolveTask(params.taskId);
+      const seconds = normalizeWaitSeconds(params.timeoutSeconds);
+      const terminal = await registry.waitForTask(task, seconds * 1000, signal);
+      const snap = registry.snapshot(task);
+      let text = formatSnapshotList([snap]);
+      if (terminal) {
+        const logs = await registry.getTaskLogs(task, BG_WAIT_TAIL_BYTES, true);
+        text += `\n\nOutput tail:\n${logs.text}`;
+      } else {
+        text += `\n\nStill running after ${seconds} s. Call bg_wait again to keep waiting; do not poll bg_status.`;
+      }
+      return { content: textContent(text), details: { tasks: [snap] } };
+    },
+    renderCall(args, theme) {
+      return new Text(
+        `${theme.fg('toolTitle', theme.bold('bg_wait '))}${theme.fg('accent', args.taskId)}`,
         0,
         0,
       );
