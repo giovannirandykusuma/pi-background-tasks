@@ -11,7 +11,7 @@ covers_sources: []
 
 <!-- pi-docs:begin name="tool-contract-bg_wait" generator="scripts/docs/generate.mjs" -->
 - Label: **Background Wait**
-- Source: `src/extension.ts:1161`
+- Source: `src/extension.ts:1167`
 - Availability: `always`
 - Available by default: **yes**
 - Description: Block until one background task ends or the timeout passes (default 300 s, max 600 s), then return its status and a short output tail. The waiting primitive for callers that are never woken by a completion notification; one call replaces a bg_status polling loop.

@@ -994,7 +994,7 @@
         "id": "command:bg",
         "kind": "command",
         "name": "bg",
-        "source": "src/extension.ts:780"
+        "source": "src/extension.ts:785"
       },
       {
         "availability": "always",
@@ -1003,7 +1003,7 @@
         "id": "command:bg-clear",
         "kind": "command",
         "name": "bg-clear",
-        "source": "src/extension.ts:823"
+        "source": "src/extension.ts:828"
       },
       {
         "availability": "always",
@@ -1012,7 +1012,7 @@
         "id": "command:bg-tasks",
         "kind": "command",
         "name": "bg-tasks",
-        "source": "src/extension.ts:815"
+        "source": "src/extension.ts:820"
       },
       {
         "availability": "always",
@@ -1021,7 +1021,7 @@
         "id": "command:bg-update",
         "kind": "command",
         "name": "bg-update",
-        "source": "src/extension.ts:831"
+        "source": "src/extension.ts:836"
       },
       {
         "availability": "feature:attribution",
@@ -1057,7 +1057,7 @@
         "id": "command:jobs",
         "kind": "command",
         "name": "jobs",
-        "source": "src/extension.ts:880"
+        "source": "src/extension.ts:885"
       },
       {
         "availability": "always",
@@ -1066,7 +1066,7 @@
         "id": "command:kill",
         "kind": "command",
         "name": "kill",
-        "source": "src/extension.ts:924"
+        "source": "src/extension.ts:929"
       },
       {
         "availability": "always",
@@ -1075,7 +1075,7 @@
         "id": "command:logs",
         "kind": "command",
         "name": "logs",
-        "source": "src/extension.ts:893"
+        "source": "src/extension.ts:898"
       },
       {
         "availability": "always",
@@ -1084,7 +1084,7 @@
         "id": "command:tasks",
         "kind": "command",
         "name": "tasks",
-        "source": "src/extension.ts:807"
+        "source": "src/extension.ts:812"
       }
     ],
     "eventbus": [
@@ -1116,7 +1116,7 @@
         "id": "renderer:background-task-notification",
         "kind": "renderer",
         "name": "background-task-notification",
-        "source": "src/extension.ts:650"
+        "source": "src/extension.ts:655"
       },
       {
         "availability": "feature:fusion",
@@ -1135,7 +1135,7 @@
         "id": "shortcut:ctrl+alt+b",
         "kind": "shortcut",
         "name": "ctrl+alt+b",
-        "source": "src/extension.ts:864"
+        "source": "src/extension.ts:869"
       },
       {
         "availability": "always",
@@ -1144,7 +1144,7 @@
         "id": "shortcut:ctrl+alt+c",
         "kind": "shortcut",
         "name": "ctrl+alt+c",
-        "source": "src/extension.ts:872"
+        "source": "src/extension.ts:877"
       },
       {
         "availability": "dock:shift+down",
@@ -1153,7 +1153,7 @@
         "id": "shortcut:shift+down",
         "kind": "shortcut",
         "name": "shift+down",
-        "source": "src/extension.ts:855"
+        "source": "src/extension.ts:860"
       }
     ],
     "tool": [
@@ -1300,7 +1300,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:1240"
+        "source": "src/extension.ts:1246"
       },
       {
         "availability": "always",
@@ -1335,7 +1335,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:1196"
+        "source": "src/extension.ts:1202"
       },
       {
         "availability": "any(feature:delegate,feature:fusion)",
@@ -1427,7 +1427,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:957"
+        "source": "src/extension.ts:962"
       },
       {
         "availability": "feature:attested",
@@ -1490,7 +1490,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:1063"
+        "source": "src/extension.ts:1069"
       },
       {
         "availability": "always",
@@ -1514,7 +1514,7 @@
           "required": [],
           "type": "object"
         },
-        "source": "src/extension.ts:1132"
+        "source": "src/extension.ts:1138"
       },
       {
         "availability": "always",
@@ -1544,7 +1544,7 @@
           ],
           "type": "object"
         },
-        "source": "src/extension.ts:1161"
+        "source": "src/extension.ts:1167"
       },
       {
         "availability": "feature:fusion",
