@@ -988,6 +988,88 @@ void describe('background EventBus protocol', () => {
   });
 });
 
+void describe('bg_wait terminal observation handoff', () => {
+  for (const mode of ['top', 'unknown', 'nested', 'malformed', 'ended', 'shutdown', 'consumed', 'timeout', 'aborted', 'tail-abort', 'tail-failure', 'snapshot-failure', 'session-start', 'repeated-call', 'call-is-task', 'event-is-task'] as const) {
+    void it(`fails closed or hands off correctly: ${mode}`, async (t) => {
+      const handlers = new Map<string, Array<(event: any) => unknown>>();
+      const tools = new Map<string, any>();
+      const pi = new Proxy({}, {
+        get(_target, key) {
+          if (key === 'events') return new MemoryEventBus();
+          if (key === 'on') return (name: string, handler: (event: any) => unknown) => {
+            const list = handlers.get(name) ?? [];
+            list.push(handler);
+            handlers.set(name, list);
+          };
+          if (key === 'registerTool') return (tool: any) => tools.set(tool.name, tool);
+          return () => undefined;
+        },
+      });
+      await backgroundTasksExtension(pi as unknown as ExtensionAPI);
+      const controller = new AbortController();
+      const task = { id: 'b-observation' };
+      let marks = 0;
+      let clears = 0;
+      if (typeof BackgroundTaskRegistry.prototype.clearTerminalShellObservations === 'function') {
+        t.mock.method(BackgroundTaskRegistry.prototype, 'clearTerminalShellObservations', () => { clears++; });
+      }
+      t.mock.method(BackgroundTaskRegistry.prototype, 'resolveTask', () => task);
+      t.mock.method(BackgroundTaskRegistry.prototype, 'waitForTask', async () => mode !== 'timeout');
+      t.mock.method(BackgroundTaskRegistry.prototype, 'snapshot', () => {
+        if (mode === 'snapshot-failure') throw new Error('snapshot failed');
+        return { id: task.id, name: 'Shell', command: 'echo shell', startTime: 0, status: mode === 'timeout' ? 'running' : 'completed', outputPath: 'out.log' };
+      });
+      t.mock.method(BackgroundTaskRegistry.prototype, 'getTaskLogs', async () => {
+        if (mode === 'tail-abort') controller.abort();
+        if (mode === 'tail-failure') throw new Error('tail failed');
+        return { text: 'terminal output' };
+      });
+      if (typeof BackgroundTaskRegistry.prototype.markTerminalShellObserved === 'function') {
+        t.mock.method(BackgroundTaskRegistry.prototype, 'markTerminalShellObserved', (value: unknown) => {
+          assert.equal(value, task);
+          marks++;
+        });
+      }
+      const call = (event: any) => handlers.get('tool_call')?.forEach((handler) => handler(event));
+      // Global hooks must ignore unrelated and nested tools, including unfamiliar input.
+      call({ toolName: 'other', toolCallId: 'other', parentToolCallId: {} });
+      if (mode !== 'unknown') call({
+        toolName: 'bg_wait', toolCallId: mode === 'event-is-task' ? task.id : 'wait',
+        ...(mode === 'nested' ? { parentToolCallId: 'parent' } : {}),
+        ...(mode === 'malformed' ? { parentToolCallId: null } : {}),
+      });
+      if (mode === 'repeated-call') call({ toolName: 'bg_wait', toolCallId: 'wait', parentToolCallId: 'nested' });
+      if (mode === 'session-start') {
+        // Clear through the real first session-start hook, without activating a host:
+        // shutdown makes that hook stop after its synchronous cleanup fence.
+        handlers.get('session_shutdown')?.[0]?.({ reason: 'exit' });
+        call({ toolName: 'bg_wait', toolCallId: 'wait' });
+        const before = clears;
+        await handlers.get('session_start')?.[0]?.({});
+        assert.equal(clears, before + 1);
+        call({ toolName: 'bg_wait', toolCallId: 'wait' });
+        await handlers.get('session_start')?.[0]?.({});
+        assert.equal(clears, before + 2, 'repeated starts also clear pending records');
+      }
+      if (mode === 'ended') handlers.get('tool_execution_end')?.forEach((handler) => handler({ toolCallId: 'wait' }));
+      if (mode === 'shutdown') {
+        // The synchronous shutdown listener also clears blocked, never-executed calls.
+        handlers.get('session_shutdown')?.[0]?.({ reason: 'exit' });
+      }
+      if (mode === 'aborted') controller.abort();
+      const execute = () => tools.get('bg_wait').execute(mode === 'call-is-task' ? task.id : 'wait', { taskId: task.id }, controller.signal);
+      if (mode === 'snapshot-failure' || mode === 'aborted' || mode === 'tail-abort') {
+        await assert.rejects(execute);
+      } else {
+        const result = await execute();
+        if (mode === 'tail-failure') assert.match(result.content[0].text, /tail unavailable/);
+        if (mode === 'consumed') await execute();
+      }
+      assert.equal(marks, ['top', 'consumed', 'tail-failure'].includes(mode) ? 1 : 0);
+    });
+  }
+});
+
 type NotificationRenderer = (
   message: { details: unknown },
   options: unknown,

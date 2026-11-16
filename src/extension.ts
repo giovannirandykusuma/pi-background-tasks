@@ -300,7 +300,22 @@ export default async function backgroundTasksExtension(pi: ExtensionAPI): Promis
     isShuttingDown: () => registry.isShuttingDown(),
   });
 
+  // Only a positively recorded top-level event authorizes observation. Older SDKs
+  // omit parentToolCallId; malformed or nested values fail closed.
+  const topLevelWaitCalls = new Set<string>();
+  pi.on('tool_call', (event) => {
+    if (event.toolName !== 'bg_wait') return;
+    topLevelWaitCalls.delete(event.toolCallId);
+    if (!('parentToolCallId' in event) || event.parentToolCallId === undefined)
+      topLevelWaitCalls.add(event.toolCallId);
+  });
+  pi.on('tool_execution_end', (event) => {
+    topLevelWaitCalls.delete(event.toolCallId);
+  });
+
   const beginSessionShutdown = (reason: string): void => {
+    topLevelWaitCalls.clear();
+    registry.clearTerminalShellObservations();
     let handoffError: unknown;
     if (!disposed) {
       disposed = true;
@@ -363,6 +378,8 @@ export default async function backgroundTasksExtension(pi: ExtensionAPI): Promis
   // This is the first session_start callback. Claim synchronously before the
   // first await, stage/import durably, then expose the fresh host adapter.
   pi.on('session_start', async (event, ctx) => {
+    topLevelWaitCalls.clear();
+    registry.clearTerminalShellObservations();
     if (disposed) return;
     const nextRegistryCtx = registryContext(ctx);
     const identity = makeReloadShellIdentity(
@@ -1175,19 +1192,27 @@ export default async function backgroundTasksExtension(pi: ExtensionAPI): Promis
       'Use bg_wait only when you must have the result in this same turn and no completion notification will wake you; otherwise continue other work or end the turn.',
     ],
     parameters: BgWaitParams,
-    async execute(_toolCallId, params, signal) {
+    async execute(toolCallId, params, signal) {
+      const topLevel = topLevelWaitCalls.delete(toolCallId);
       const task = registry.resolveTask(params.taskId);
       const seconds = normalizeWaitSeconds(params.timeoutSeconds);
       const terminal = await registry.waitForTask(task, seconds * 1000, signal);
       const snap = registry.snapshot(task);
       let text = formatSnapshotList([snap]);
       if (terminal) {
-        const logs = await registry.getTaskLogs(task, BG_WAIT_TAIL_BYTES, true);
-        text += `\n\nOutput tail:\n${logs.text}`;
+        try {
+          const logs = await registry.getTaskLogs(task, BG_WAIT_TAIL_BYTES, true);
+          text += `\n\nOutput tail:\n${logs.text}`;
+        } catch {
+          text += '\n\nOutput tail unavailable.';
+        }
       } else {
         text += `\n\nStill running after ${seconds} s. Call bg_wait again to keep waiting; do not poll bg_status.`;
       }
-      return { content: textContent(text), details: { tasks: [snap] } };
+      const response = { content: textContent(text), details: { tasks: [snap] } };
+      signal?.throwIfAborted();
+      if (terminal && topLevel) registry.markTerminalShellObserved(task);
+      return response;
     },
     renderCall(args, theme) {
       return new Text(

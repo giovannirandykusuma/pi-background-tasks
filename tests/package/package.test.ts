@@ -48,8 +48,6 @@ function resolveNpmCli(): string {
   throw new Error(`cannot resolve npm-cli.js near ${process.execPath}`);
 }
 
-const npmCli = resolveNpmCli();
-
 interface CommandResult {
   readonly status: number | null;
   readonly stdout: string;
@@ -105,7 +103,7 @@ function runNpm(
   args: readonly string[],
   options: { cwd: string; env: NodeJS.ProcessEnv },
 ): CommandResult {
-  const result = spawnSync(process.execPath, [npmCli, ...args], {
+  const result = spawnSync(process.execPath, [resolveNpmCli(), ...args], {
     cwd: options.cwd,
     encoding: 'utf8',
     env: options.env,
@@ -118,7 +116,7 @@ function runNpmAsync(
   options: { cwd: string; env: NodeJS.ProcessEnv },
 ): Promise<CommandResult> {
   return new Promise((resolveResult, reject) => {
-    const child = spawn(process.execPath, [npmCli, ...args], {
+    const child = spawn(process.execPath, [resolveNpmCli(), ...args], {
       cwd: options.cwd,
       env: options.env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -2491,7 +2489,7 @@ void describe('package', () => {
       await assert.rejects(
         startInstalledDependencyRegistry({
           dependencySpecs: { 'missing-lifecycle-sentinel': '1.0.0' },
-          npmCli,
+          npmCli: resolveNpmCli(),
           npmEnv: sentinelEnv('prepare'),
           packageRoot,
           scratchDir: join(temp, 'invalid-registry'),
@@ -2503,7 +2501,7 @@ void describe('package', () => {
       const sourceHashBefore = hashReadOnlyTree(sentinelDirectory);
       registry = await startInstalledDependencyRegistry({
         dependencySpecs: { 'npm-pack-lifecycle-sentinel': '1.0.0' },
-        npmCli,
+        npmCli: resolveNpmCli(),
         npmEnv: sentinelEnv('prepare'),
         packageRoot,
         scratchDir: join(temp, 'safe-registry'),
@@ -2637,7 +2635,7 @@ void describe('package', () => {
       assert.deepEqual(await readdir(join(installEnvRoot, 'cache')), []);
       registry = await startInstalledDependencyRegistry({
         dependencySpecs: packageJson.dependencies,
-        npmCli,
+        npmCli: resolveNpmCli(),
         npmEnv: isolatedNpmEnv(packEnvRoot),
         packageRoot: fileURLToPath(root),
         scratchDir: join(temp, 'dependency-registry'),

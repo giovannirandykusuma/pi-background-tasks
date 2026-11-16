@@ -861,6 +861,26 @@ function writeDelegateStdin(
 
 export class BackgroundTaskRegistry {
   private readonly tasks = new Map<string, BgTask>();
+  private readonly ordinaryShellTasks = new WeakSet<BgTask>();
+  private observedTerminalShellTasks = new WeakSet<BgTask>();
+
+  /** Intended top-level tool-result handoff, not proof of model consumption. */
+  markTerminalShellObserved(task: BgTask): void {
+    if (
+      this.tasks.get(task.id) === task &&
+      this.ordinaryShellTasks.has(task) &&
+      task.status !== 'running' &&
+      task.shellPolicy !== undefined &&
+      task.isAgent === false &&
+      task.surviveReload === false &&
+      task.managedCancel === undefined &&
+      task.reloadExecution === undefined
+    ) this.observedTerminalShellTasks.add(task);
+  }
+
+  clearTerminalShellObservations(): void {
+    this.observedTerminalShellTasks = new WeakSet<BgTask>();
+  }
   private runtimeDir: RuntimeDir | undefined;
   private shuttingDown = false;
   private taskAdmissionsClosed = false;
@@ -1104,6 +1124,7 @@ export class BackgroundTaskRegistry {
 
   setShuttingDown(value: boolean): void {
     if (value) {
+      this.clearTerminalShellObservations();
       this.shuttingDown = true;
       // Notifications are never delivered while shutting down; buffered ones are
       // dropped exactly as an immediate send would have been suppressed.
@@ -1779,6 +1800,7 @@ export class BackgroundTaskRegistry {
       shellPolicy: shellPolicySnapshot(shellPolicy),
       waiters: [],
     };
+    if (!isAgent) this.ordinaryShellTasks.add(task);
     if (commandToSpawn !== normalizedCommand) task.telemetryWrapped = true;
     if (piTelemetryRequested && !shellPolicy.supportsPosixFunctionWrapper) {
       task.telemetryUnavailableReason =
@@ -4108,7 +4130,12 @@ export class BackgroundTaskRegistry {
           display: true,
           details,
         },
-        { deliverAs: 'followUp', triggerTurn: batch.some((task) => task.triggerOnCompletion) },
+        {
+          deliverAs: 'followUp',
+          triggerTurn: batch.some(
+            (task) => task.triggerOnCompletion && !this.observedTerminalShellTasks.has(task),
+          ),
+        },
       );
     } catch (error) {
       for (const task of batch) task.notified = false;

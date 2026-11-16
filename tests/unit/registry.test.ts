@@ -103,6 +103,155 @@ interface SpawnRecord {
   options: Parameters<BackgroundTaskSpawn>[2];
 }
 
+void describe('ordinary shell terminal observation', () => {
+  for (const mode of ['observed', 'unobserved', 'mixed', 'foreign', 'agent', 'cleared', 'running', 'late', 'no-trigger', 'no-notice', 'other-instance'] as const) {
+    void it(`preserves notification semantics for ${mode}`, async () => {
+      const h = await createHarness({ notifyBatchMs: mode === 'late' ? 0 : 60_000 });
+      try {
+        const task = await h.registry.startTask(h.ctx, 'echo observed', {
+          name: 'Observed shell', isAgent: mode === 'agent',
+          notifyOnCompletion: mode !== 'no-notice', triggerOnCompletion: mode !== 'no-trigger',
+        });
+        if (mode === 'running') h.registry.markTerminalShellObserved(task);
+        h.children[0]?.child.close(0);
+        await waitFor(() => task.status !== 'running', 'terminal task');
+        if (mode === 'late') await waitFor(() => task.notified, 'immediate handoff');
+        if (mode === 'other-instance') {
+          const other = await createHarness();
+          try { other.registry.markTerminalShellObserved(task); }
+          finally { other.registry.setShuttingDown(true); await rm(other.root, { recursive: true, force: true }); }
+        }
+        else if (mode === 'foreign') h.registry.markTerminalShellObserved({ ...task });
+        else if (mode !== 'unobserved' && mode !== 'running') h.registry.markTerminalShellObserved(task);
+        if (mode === 'cleared') h.registry.clearTerminalShellObservations();
+        if (mode === 'mixed') {
+          const other = await h.registry.startTask(h.ctx, 'echo other', {
+            name: 'Unobserved shell', isAgent: false,
+            notifyOnCompletion: true, triggerOnCompletion: true,
+          });
+          h.children[1]?.child.close(0);
+          await waitFor(() => other.notified, 'second notification buffered');
+        }
+        if (mode === 'no-notice') {
+          await h.registry.flushPendingNotifications();
+          assert.equal(h.notifications.length, 0);
+          assert.equal(task.notified, false);
+          return;
+        }
+        await waitFor(() => task.notified, 'notification buffered');
+        await h.registry.flushPendingNotifications();
+        assert.equal(h.notifications.length, 1);
+        assert.equal(h.notifications[0]?.options.triggerTurn, mode !== 'observed' && mode !== 'no-trigger');
+        assert.equal(task.notified, true);
+        assert.equal(task.triggerOnCompletion, mode !== 'no-trigger', 'configured flag remains unchanged');
+      } finally {
+        h.registry.setShuttingDown(true);
+        await rm(h.root, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+void describe('nonordinary task observation exclusions', () => {
+  for (const kind of ['managed', 'fusion', 'delegate', 'attested', 'survivor'] as const) {
+    void it(kind === 'attested'
+      ? 'keeps terminal attested tasks outside observation membership without inventing a notification path'
+      : `keeps ${kind} notification triggering after attempted observation`, async () => {
+      const hub = createReloadShellOwnerHubForTests({ handoffTimeoutMs: 1000 });
+      const h = await createHarness({
+        notifyBatchMs: 60_000, reloadShellOwner: hub, modelRegistry: oauthRegistry(),
+        childFactory: (pid) => Object.assign(new FakeChild(pid), {
+          stdin: {
+            once: () => undefined,
+            write: (_data: Buffer, callback: (error?: Error | null) => void) => { callback(); return true; },
+            end: () => undefined,
+          },
+        }),
+      });
+      let lease: ReloadShellActivationLeaseV1 | undefined;
+      try {
+        let task: BgTask;
+        let complete: () => void = () => undefined;
+        if (kind === 'managed' || kind === 'fusion') {
+          const completion = new Promise<void>((resolve) => { complete = resolve; });
+          task = await h.registry.startManagedTask(h.ctx, {
+            id: `excluded-${kind}`, name: kind, command: kind, isAgent: kind === 'fusion',
+            completion, cancel: () => undefined, notifyOnCompletion: true, triggerOnCompletion: true,
+            // The actual managed API requires Fusion facts in both cases.
+            // The managed case exercises isAgent:false, not a nonexistent
+            // Fusion-free managed-task admission route.
+            fusion: {
+              runId: 'reason-cccccccccccccccccccccccccccccccc', workflow: 'reason',
+              artifactDir: '.pi/fusion/excluded', artifactDirAbs: join(h.cwd, '.pi/fusion/excluded'),
+              state: 'initializing', usageDelivered: false,
+            },
+          });
+          complete();
+        } else if (kind === 'delegate') {
+          const request: StartDelegateTaskOptions = Object.assign(Object.create(null), {
+            name: 'excluded delegate', argv: [], stdinBytes: Buffer.from('seed'), env: {},
+            facts: { taskId: 'excluded-delegate', route: { qualifiedId: 'test/delegate-model' } },
+            notifyOnCompletion: true, triggerOnCompletion: true,
+          });
+          task = await h.registry.startDelegateTask(h.ctx, request);
+          lastSpawn(h).child.close(0);
+        } else if (kind === 'attested') {
+          await initCleanGit(h.cwd);
+          task = await h.registry.startAttestedPiTask(h.ctx, {
+            name: 'excluded attested', provider: 'openai-codex', model: 'gpt-5.5',
+            prompt: 'write report.md', reportPath: 'report.md',
+          });
+          // Attested finalization publishes terminal state directly, without the
+          // ordinary completion-notification pipeline. Preserve its real flags.
+          assert.equal(task.notifyOnCompletion, false);
+          assert.equal(task.triggerOnCompletion, false);
+          lastSpawn(h).child.close(1);
+        } else {
+          const identity = makeReloadShellIdentity(h.ctx.sessionId ?? '', realpathSync(h.cwd));
+          const claim = hub.beginActivation(identity, 'startup', 'e'.repeat(32));
+          lease = hub.commitActivation(claim, await h.registry.stageReloadActivation(claim));
+          task = await h.registry.startTask(h.ctx, 'echo survivor', {
+            name: 'excluded survivor', isAgent: false, surviveReload: true,
+            notifyOnCompletion: true, triggerOnCompletion: true,
+          });
+          // Hold terminal publication so observation is attempted while the real
+          // reloadExecution still owns the terminal task, before immediate send.
+          let release: () => void = () => undefined;
+          task.terminalPublicationGate = new Promise<void>((resolve) => { release = resolve; });
+          lastSpawn(h).child.close(0);
+          await waitFor(() => task.status !== 'running', 'survivor terminal');
+          assert.ok(task.reloadExecution);
+          h.registry.markTerminalShellObserved(task);
+          release();
+        }
+        await waitFor(() => task.status !== 'running', 'excluded task terminal');
+        h.registry.markTerminalShellObserved(task);
+        if (kind === 'attested') {
+          // Read-only classification boundary: no notification exists whose
+          // trigger could demonstrate exclusion. Never force notification state.
+          const observed: unknown = Reflect.get(h.registry, 'observedTerminalShellTasks');
+          assert.ok(observed instanceof WeakSet);
+          assert.equal(observed.has(task), false, 'actual terminal attested task is ineligible');
+          assert.equal(task.status, 'failed');
+          assert.equal(h.registry.snapshot(task).status, 'failed');
+          await h.registry.flushPendingNotifications();
+          assert.equal(h.notifications.length, 0);
+          assert.equal(task.notified, false);
+          return;
+        }
+        await waitFor(() => task.notified, 'excluded notification buffered');
+        await h.registry.flushPendingNotifications();
+        assert.equal(h.notifications.length, 1);
+        assert.equal(h.notifications[0]?.options.triggerTurn, true);
+      } finally {
+        if (lease !== undefined) h.registry.releaseReloadActivation(lease);
+        h.registry.setShuttingDown(true);
+        await cleanup(h.root);
+      }
+    });
+  }
+});
+
 interface HarnessOptions {
   platform?: NodeJS.Platform;
   maxRecentTasks?: number;
