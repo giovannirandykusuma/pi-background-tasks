@@ -1,0 +1,179 @@
+name: Ordinary terminal regression
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact reviewed source candidate
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  finite-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ACCEPTED_SHA: 4897a47123ae3eddda86cb8142b87d71c03d7b65
+      REQUESTED_SHA: ${{ inputs.candidate_sha }}
+      WORKFLOW_SHA: ${{ github.sha }}
+      WORKFLOW_REF: ${{ github.ref }}
+    steps:
+      - name: Validate immutable input
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$REQUESTED_SHA" = "$ACCEPTED_SHA"
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+      - name: Verify accepted source and prepare runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ACCEPTED_SHA"
+          mkdir -p finite-evidence
+          python3 - <<'PY'
+          import hashlib, pathlib
+          expected = {
+              'src/extension.ts': 'deea80992b837a69c28f64571cd47c2fec2cf73e445ceccbf9d8fa40bd8ca4e5',
+              'src/core/registry.ts': '12054cbc33016214bc0b7236d0e32f050cd52df272bbd68ea33444b10027ca4f',
+              'tests/sdk/sdk.test.ts': 'b6ef6e4905e34b315b1c514160e6105bc644d591a74e4ed6f93f46e53d32c5a7',
+          }
+          for name, digest in expected.items():
+              if hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() != digest:
+                  raise SystemExit('Accepted source hash mismatch: ' + name)
+          PY
+          npm ci
+          npm run build:runtime
+          # Generated dist is tracked and intentionally refreshed by this build.
+          # Freeze the resulting tracked bytes; tests may not change them afterward.
+          python3 - <<'PY'
+          import hashlib, json, pathlib, subprocess
+          names = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
+          snapshot = {name: hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest()
+                      for name in names if name and pathlib.Path(name).is_file()}
+          (pathlib.Path('finite-evidence') / 'post-build-tracked.json').write_text(json.dumps(snapshot, sort_keys=True))
+          changed = subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines()
+          if any(not name.startswith('dist/') for name in changed):
+              raise SystemExit('Build changed non-generated source')
+          PY
+          npm run typecheck
+          node -e 'const p=require("./node_modules/@earendil-works/pi-coding-agent/package.json"); if(p.version!=="0.84.0") process.exit(1); console.log(p.version)' > finite-evidence/sdk-version.txt
+          node --version > finite-evidence/node-version.txt
+          npm --version > finite-evidence/npm-version.txt
+      - name: Run permanent no-loop regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --import tsx --test --test-reporter=tap --test-name-pattern='ordinary shell terminal observation|nonordinary task observation exclusions|bg_wait terminal observation handoff' tests/unit/registry.test.ts tests/unit/extension-api.test.ts | tee finite-evidence/unit.tap
+      - name: Run isolated unprompted SDK consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x /usr/bin/unshare
+          test -x /usr/bin/setpriv
+          sudo -n true
+          uid=$(id -u)
+          gid=$(id -g)
+          test "$uid" -ne 0
+          node_path=$(command -v node)
+          test -x "$node_path"
+          clean_home=$(mktemp -d /tmp/bg-sdk-home.XXXXXX)
+          isolation_script=$(mktemp /tmp/bg-sdk-isolation.XXXXXX.py)
+          trap 'rm -f "$isolation_script"; rm -rf "$clean_home"' EXIT
+          chmod 700 "$clean_home"
+          cat > "$isolation_script" <<'PY'
+          import errno, json, os, pathlib, socket, subprocess, sys
+          if os.geteuid() == 0:
+              raise SystemExit('SDK must never execute as root')
+          status = pathlib.Path('/proc/self/status').read_text().splitlines()
+          values = dict(line.split(':', 1) for line in status if ':' in line)
+          if int(values['CapEff'].strip(), 16) != 0 or values['NoNewPrivs'].strip() != '1':
+              raise SystemExit('Privilege drop incomplete')
+          for line in pathlib.Path('/proc/net/route').read_text().splitlines()[1:]:
+              if line.split()[0] != 'lo':
+                  raise SystemExit('External IPv4 route present')
+          for line in pathlib.Path('/proc/net/ipv6_route').read_text().splitlines():
+              if line.split()[-1] != 'lo':
+                  raise SystemExit('External IPv6 route present')
+          allowed = {errno.ENETUNREACH, errno.EHOSTUNREACH, errno.ECONNREFUSED,
+                     errno.EADDRNOTAVAIL, errno.EAFNOSUPPORT}
+          for family, address in [(socket.AF_INET, ('1.1.1.1', 443)),
+                                  (socket.AF_INET6, ('2606:4700:4700::1111', 443, 0, 0))]:
+              try:
+                  with socket.socket(family, socket.SOCK_STREAM) as client:
+                      client.settimeout(2)
+                      client.connect(address)
+              except OSError as error:
+                  if error.errno not in allowed:
+                      raise SystemExit('Unproved network boundary: ' + str(error))
+              else:
+                  raise SystemExit('External connectivity present')
+          print('PASS nonroot, zero capabilities, no-new-privs, isolated IPv4/IPv6 namespace', flush=True)
+          result = subprocess.run([sys.argv[1], '--import', 'tsx', '--test', '--test-reporter=tap',
+              '--test-concurrency=1',
+              '--test-name-pattern=serves real extension EventBus requests and terminal events through the shared registry',
+              'tests/sdk/sdk.test.ts'], check=False)
+          raise SystemExit(result.returncode)
+          PY
+          chmod 600 "$isolation_script"
+          trusted_path="$(dirname "$node_path"):/usr/bin:/bin"
+          sudo -n /usr/bin/unshare --net -- /usr/bin/setpriv \
+            --reuid="$uid" --regid="$gid" --init-groups --no-new-privs \
+            --bounding-set=-all --inh-caps=-all --ambient-caps=-all \
+            /usr/bin/env -i HOME="$clean_home" PATH="$trusted_path" LANG=C.UTF-8 \
+            PI_OFFLINE=1 PI_BG_DISABLE_UPDATE_CHECK=1 PI_TELEMETRY=0 \
+            PI_BG_POSIX_SHELL=bash PI_BG_POSIX_SHELL_PATH=/bin/bash \
+            /usr/bin/python3 "$isolation_script" "$node_path" | tee finite-evidence/sdk.tap
+      - name: Require exact finite results and bind both identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re, subprocess
+          root = pathlib.Path('finite-evidence')
+          logs = {}
+          for name, count in [('unit.tap', 32), ('sdk.tap', 1)]:
+              data = (root / name).read_text()
+              for field, expected in [('tests', count), ('pass', count), ('fail', 0),
+                                      ('cancelled', 0), ('skipped', 0), ('todo', 0)]:
+                  matches = re.findall(r'^# ' + field + r' (\d+)\s*$', data, re.M)
+                  if matches != [str(expected)]:
+                      raise SystemExit('Unexpected test summary: ' + name + '/' + field)
+              logs[name] = hashlib.sha256((root / name).read_bytes()).hexdigest()
+          if 'PASS nonroot, zero capabilities, no-new-privs, isolated IPv4/IPv6 namespace' not in (root / 'sdk.tap').read_text():
+              raise SystemExit('Missing isolation preflight')
+          candidate = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          if candidate != os.environ['ACCEPTED_SHA'] or candidate != os.environ['REQUESTED_SHA']:
+              raise SystemExit('Candidate identity changed')
+          before = json.loads((root / 'post-build-tracked.json').read_text())
+          names = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
+          after = {name: hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest()
+                   for name in names if name and pathlib.Path(name).is_file()}
+          if before != after:
+              raise SystemExit('Tracked bytes changed after the explicit runtime build')
+          result = {'status': 'FINITE_SUPPORTED_PEER_PASS', 'candidateSha': candidate,
+                    'workflowSha': os.environ['WORKFLOW_SHA'],
+                    'workflowRef': os.environ['WORKFLOW_REF'], 'unitTests': 32, 'sdkTests': 1,
+                    'sdkVersion': (root / 'sdk-version.txt').read_text().strip(),
+                    'node': (root / 'node-version.txt').read_text().strip(),
+                    'npm': (root / 'npm-version.txt').read_text().strip(), 'logs': logs,
+                    'scope': 'No agent loop, CLI/RPC/PTY, full matrix, Pi1.5.2 compatibility or installation claim'}
+          (root / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
+          PY
+      - name: Preserve bounded evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ordinary-terminal-evidence
+          path: finite-evidence/
+          if-no-files-found: error
